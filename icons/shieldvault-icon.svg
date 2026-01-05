@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Shield body -->
+  <path d="M16 8 L112 8 L112 80 Q112 100 64 120 Q16 100 16 80 Z" 
+        fill="none" 
+        stroke="#1a1a2e" 
+        stroke-width="8"
+        stroke-linejoin="round"/>
+  
+  <!-- S letterform -->
+  <path d="M72 32 
+           Q48 32 48 48 
+           Q48 58 64 62 
+           Q80 66 80 80 
+           Q80 96 56 96"
+        fill="none"
+        stroke="#1a1a2e"
+        stroke-width="10"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+  
+  <!-- Small keyhole accent at top of S -->
+  <circle cx="64" cy="44" r="4" fill="#1a1a2e"/>
+</svg>

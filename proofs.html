@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShieldVault — Proofs of Prevention</title>
+  <link rel="stylesheet" href="proofs.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛡️ Proofs of Prevention</h1>
+      <p class="subtitle">What ShieldVault blocked this session</p>
+    </header>
+    
+    <div class="notice">
+      <strong>Session-only memory:</strong> This list exists only in browser memory. 
+      It will be cleared when you close the browser. No secrets are stored—only metadata 
+      (domain, time, detection type).
+    </div>
+    
+    <div class="controls">
+      <span class="count" id="count">—</span>
+      <button class="clear-btn" id="clear-btn">Clear History</button>
+    </div>
+    
+    <div id="proof-container">
+      <div class="empty-state" id="empty-state">
+        <div class="icon">✓</div>
+        <p>No preventions recorded yet</p>
+        <p class="hint">When ShieldVault blocks a secret, it will appear here</p>
+      </div>
+      <div class="proof-list" id="proof-list"></div>
+    </div>
+
+    <!-- Pro Section -->
+    <div class="pro-section" id="pro-section">
+      <div class="pro-header">
+        <span class="pro-badge">PRO</span>
+        <span class="pro-title">Upgrade to ShieldVault Pro</span>
+      </div>
+      <ul class="pro-features">
+        <li>✓ Priority support</li>
+        <li>✓ Early access to new detectors</li>
+        <li>✓ Support independent development</li>
+      </ul>
+      <div class="pro-buttons">
+        <button class="pro-btn pro-btn-monthly" id="btn-monthly">
+          $7/month
+        </button>
+        <button class="pro-btn pro-btn-lifetime" id="btn-lifetime">
+          $39 lifetime
+        </button>
+      </div>
+      <button class="pro-purchased-link" id="btn-already-purchased">
+        I've already purchased
+      </button>
+    </div>
+
+    <!-- Pro Active State (hidden by default) -->
+    <div class="pro-active" id="pro-active" style="display: none;">
+      <div class="pro-active-badge">⭐ PRO</div>
+      <p>Thanks for supporting ShieldVault!</p>
+      <button class="pro-reset-link" id="btn-reset-pro">Reset Pro status</button>
+    </div>
+
+    <footer>
+      ShieldVault — Detection without possession
+    </footer>
+  </div>
+  <script src="proofs.js"></script>
+</body>
+</html>
