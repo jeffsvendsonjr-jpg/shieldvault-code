@@ -1,13 +1,14 @@
+
 // ======================================================
 // ShieldVault — Proofs UI Script
+// License verification via ShieldVault API
 // ======================================================
 
 // ================================
-// LEMON SQUEEZY CHECKOUT URLS
+// API CONFIG
+// UPDATE THIS URL AFTER PUBLISHING YOUR REPLIT APP
 // ================================
-// TODO: Replace these with your actual LemonSqueezy checkout URLs
-const CHECKOUT_MONTHLY = "https://shieldvault.lemonsqueezy.com/checkout/buy/ee38807a-cf0d-490d-afd6-26f7b665f005";
-const CHECKOUT_LIFETIME = "https://shieldvault.lemonsqueezy.com/checkout/buy/2953ace7-4e2f-4dc5-85a8-675674a8f70f";
+const API_BASE = "https://extension-paywall.replit.app";
 
 // ================================
 // DOM ELEMENTS
@@ -17,12 +18,15 @@ const emptyEl = document.getElementById("empty-state");
 const listEl = document.getElementById("proof-list");
 const clearBtn = document.getElementById("clear-btn");
 
-// Pro elements
 const proSection = document.getElementById("pro-section");
 const proActive = document.getElementById("pro-active");
+const licenseInputSection = document.getElementById("license-input-section");
+const licenseKeyInput = document.getElementById("license-key-input");
+const licenseError = document.getElementById("license-error");
 const btnMonthly = document.getElementById("btn-monthly");
-const btnLifetime = document.getElementById("btn-lifetime");
 const btnAlreadyPurchased = document.getElementById("btn-already-purchased");
+const btnActivate = document.getElementById("btn-activate");
+const btnCancelActivate = document.getElementById("btn-cancel-activate");
 const btnResetPro = document.getElementById("btn-reset-pro");
 
 // ================================
@@ -38,7 +42,7 @@ function formatTime(timestamp) {
   if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
-  
+
   return date.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -106,26 +110,82 @@ function loadProofs() {
 // ================================
 // PRO STATUS MANAGEMENT
 // ================================
-function updateProUI(isPro) {
-  if (isPro) {
-    proSection.style.display = "none";
-    proActive.style.display = "block";
-  } else {
+function showView(view) {
+  proSection.style.display = "none";
+  proActive.style.display = "none";
+  licenseInputSection.style.display = "none";
+
+  if (view === "upgrade") {
     proSection.style.display = "block";
-    proActive.style.display = "none";
+  } else if (view === "active") {
+    proActive.style.display = "block";
+  } else if (view === "input") {
+    licenseInputSection.style.display = "block";
   }
 }
 
 function loadProStatus() {
-  chrome.storage.local.get(["shieldvault_pro"], (result) => {
-    const isPro = result.shieldvault_pro === true;
-    updateProUI(isPro);
+  chrome.storage.local.get(["shieldvault_pro", "shieldvault_license_key"], (result) => {
+    if (result.shieldvault_pro === true && result.shieldvault_license_key) {
+      verifyStoredLicense(result.shieldvault_license_key);
+    } else {
+      showView("upgrade");
+    }
   });
 }
 
-function setProStatus(isPro) {
-  chrome.storage.local.set({ shieldvault_pro: isPro }, () => {
-    updateProUI(isPro);
+function verifyStoredLicense(key) {
+  fetch(`${API_BASE}/api/license/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ licenseKey: key })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.valid) {
+      showView("active");
+    } else {
+      chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"]);
+      showView("upgrade");
+    }
+  })
+  .catch(() => {
+    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"]);
+    showView("upgrade");
+  });
+}
+
+function activateLicense(key) {
+  licenseError.style.display = "none";
+  btnActivate.disabled = true;
+  btnActivate.textContent = "Verifying...";
+
+  fetch(`${API_BASE}/api/license/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ licenseKey: key })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.valid) {
+      chrome.storage.local.set({
+        shieldvault_pro: true,
+        shieldvault_license_key: key
+      }, () => {
+        showView("active");
+      });
+    } else {
+      licenseError.textContent = "Invalid or expired license key.";
+      licenseError.style.display = "block";
+    }
+  })
+  .catch(() => {
+    licenseError.textContent = "Could not verify. Check your connection.";
+    licenseError.style.display = "block";
+  })
+  .finally(() => {
+    btnActivate.disabled = false;
+    btnActivate.textContent = "Activate";
   });
 }
 
@@ -133,7 +193,6 @@ function setProStatus(isPro) {
 // EVENT HANDLERS
 // ================================
 
-// Clear proofs
 clearBtn.addEventListener("click", () => {
   if (confirm("Clear all prevention records for this session?")) {
     chrome.runtime.sendMessage({ type: "CLEAR_PROOFS" }, () => {
@@ -142,27 +201,42 @@ clearBtn.addEventListener("click", () => {
   }
 });
 
-// Monthly checkout
 btnMonthly.addEventListener("click", () => {
-  chrome.tabs.create({ url: CHECKOUT_MONTHLY });
+  chrome.tabs.create({ url: API_BASE });
 });
 
-// Lifetime checkout
-btnLifetime.addEventListener("click", () => {
-  chrome.tabs.create({ url: CHECKOUT_LIFETIME });
-});
-
-// Already purchased (honor system)
 btnAlreadyPurchased.addEventListener("click", () => {
-  if (confirm("Thanks for supporting ShieldVault! Click OK to activate Pro.")) {
-    setProStatus(true);
+  showView("input");
+  licenseKeyInput.value = "";
+  licenseError.style.display = "none";
+  licenseKeyInput.focus();
+});
+
+btnCancelActivate.addEventListener("click", () => {
+  showView("upgrade");
+});
+
+btnActivate.addEventListener("click", () => {
+  const key = licenseKeyInput.value.trim();
+  if (!key) {
+    licenseError.textContent = "Please enter a license key.";
+    licenseError.style.display = "block";
+    return;
+  }
+  activateLicense(key);
+});
+
+licenseKeyInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    btnActivate.click();
   }
 });
 
-// Reset Pro status
 btnResetPro.addEventListener("click", () => {
-  if (confirm("Reset your Pro status?")) {
-    setProStatus(false);
+  if (confirm("Deactivate your Pro status?")) {
+    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"], () => {
+      showView("upgrade");
+    });
   }
 });
 
@@ -172,5 +246,4 @@ btnResetPro.addEventListener("click", () => {
 loadProofs();
 loadProStatus();
 
-// Refresh proofs every 5 seconds
 setInterval(loadProofs, 5000);
