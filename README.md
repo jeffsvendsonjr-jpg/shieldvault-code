@@ -40,6 +40,35 @@ The subscription flow is handled by a small Express.js server deployed to Replit
 
 See [`server/README.md`](server/README.md) for full deployment instructions (Replit setup, Stripe webhook registration, environment variables).
 
+## What's in this repo
+
+```
+shieldvault-code/
+│
+├── 📦 EXTENSION FILES (these go in the Chrome Web Store ZIP)
+│   ├── manifest.json          ← extension identity & permissions
+│   ├── background.js          ← service worker (license checks)
+│   ├── content-script.js      ← detects and blocks secrets/messages
+│   ├── proofs.html / .js / .css  ← the popup UI
+│   └── icons/                 ← icon images (16, 32, 48, 128px)
+│
+├── 🖥️  SERVER FILES (already deployed to Replit — don't touch)
+│   └── server/                ← Node.js + Stripe subscription backend
+│
+├── 📄 DOCS
+│   ├── QUICKSTART.md          ← start here if you're new
+│   ├── TESTING.md             ← full test scenarios
+│   ├── PR-2_READINESS.md      ← release checklist
+│   └── README.md              ← this file
+│
+└── ⚙️  AUTOMATION
+    ├── scripts/build-zip.js   ← builds the ZIP (runs automatically on GitHub)
+    └── .github/workflows/
+        └── package.yml        ← GitHub Action: builds & uploads ZIP on every push to main
+```
+
+**The ZIP is built for you automatically** — after merging to `main`, go to the **Actions** tab on GitHub → **"Package Extension"** workflow (the display name shown in the left sidebar) → download the artifact. See [`QUICKSTART.md`](QUICKSTART.md) Step 4.
+
 ## Local Testing
 
 **First time?** See [`QUICKSTART.md`](QUICKSTART.md) — a beginner-friendly guide that covers only what you need: load in Chrome, verify secret detection, merge the PR, and upload the ZIP to the Web Store. No command line required.

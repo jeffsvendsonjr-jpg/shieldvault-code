@@ -60,30 +60,67 @@ Done. The code is now on `main`. ✅
 
 ---
 
-## Step 4 — Create the ZIP file for the Chrome Web Store
+## Step 4 — Get the ZIP file for the Chrome Web Store
 
-You need to create a ZIP of just the extension files (not the whole repo).
+> **Good news: you don't have to create the ZIP yourself.** GitHub builds it for you automatically every time code merges to `main`. After you complete Step 3 (merging the PR), the ZIP will be ready to download in about 30 seconds.
 
-### On Mac
+### Option A — Download the ZIP from GitHub (easiest, recommended)
+
+1. On your repository page on GitHub, click the **"Actions"** tab (it's in the top nav, next to "Pull requests")
+2. In the list on the left, click **"Package Extension"**
+3. Click the most recent run (the top one, should show a green ✅ after the merge)
+4. Scroll to the bottom of that page — you'll see an **"Artifacts"** section
+5. Click **"shieldvault-v1.2.0"** to download the ZIP
+6. Your browser will download a file called `shieldvault-v1.2.0.zip` ✅
+
+> If you don't see a green ✅ yet, wait 30 seconds and refresh the page. The build takes about 20–30 seconds to finish.
+
+---
+
+### What's in the ZIP (for reference)
+
+The ZIP contains only the extension files — nothing from `server/`, no docs, no `node_modules`:
+
+```
+shieldvault-v1.2.0.zip
+├── manifest.json          ← tells Chrome what the extension is
+├── background.js          ← service worker (license checks)
+├── content-script.js      ← the code that actually blocks secrets/messages
+├── proofs.html            ← the popup page you see when clicking the icon
+├── proofs.js              ← popup logic
+├── proofs.css             ← popup styles
+└── icons/
+    ├── icon16.png
+    ├── icon32.png
+    ├── icon48.png
+    └── icon128.png
+```
+
+Everything else in the repo (`server/`, `README.md`, `TESTING.md`, `scripts/`, etc.) is **not** included — the Chrome Web Store only gets the 10 files above.
+
+---
+
+### Option B — Create the ZIP manually (if GitHub Actions isn't available)
+
+<details>
+<summary>Click to expand manual ZIP instructions</summary>
+
+**On Mac:**
 1. Open **Finder** and navigate to this repo folder
 2. Select these files/folders all at once (hold ⌘ and click each):
-   - `manifest.json`
-   - `background.js`
-   - `content-script.js`
-   - `proofs.html`
-   - `proofs.js`
-   - `proofs.css`
-   - `icons` (the whole folder)
+   `manifest.json`, `background.js`, `content-script.js`, `proofs.html`, `proofs.js`, `proofs.css`, and the `icons` folder
 3. Right-click → **"Compress 7 Items"**
 4. Rename the resulting file to `shieldvault-v1.2.0.zip`
 
-### On Windows
+**On Windows:**
 1. Open **File Explorer** and navigate to this repo folder
-2. Select the same files/folders listed above (hold Ctrl and click each)
+2. Select the same files (hold Ctrl and click each)
 3. Right-click → **"Compress to ZIP file"** (Windows 11) or **"Send to → Compressed (zipped) folder"**
 4. Rename it to `shieldvault-v1.2.0.zip`
 
-**Quick sanity check:** Open the ZIP — you should see `manifest.json` at the top level, not inside a subfolder. If it's inside a subfolder, Chrome Web Store will reject it.
+**Sanity check:** Open the ZIP — `manifest.json` should be at the top level, not inside a subfolder.
+
+</details>
 
 ---
 
@@ -110,9 +147,9 @@ Google will review it within 1–3 business days and then publish it automatical
 | Load in Chrome | 2 min | Click a button |
 | Test secret detection | 3 min | Type in a text box |
 | Merge the PR | 1 min | Click a button on GitHub |
-| Create ZIP | 3 min | Select files + right-click |
+| Download the ZIP | 30 sec | Click a link on GitHub Actions |
 | Upload to Chrome Web Store | 5 min | Click through a web form |
-| **Total** | **~15 min** | **No code required** |
+| **Total** | **~12 min** | **No code required** |
 
 ---
 
