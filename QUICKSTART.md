@@ -49,14 +49,35 @@ This is the most important test. It runs entirely in the browser — no server, 
 
 ---
 
-## Step 3 — Merge the pull request on GitHub (1 minute)
+## Step 3 — Merge the pull request on GitHub (2 minutes)
 
-1. Open your repository on GitHub and click the **"Pull requests"** tab
-2. Click on the open pull request
-3. Scroll to the bottom — click **"Ready for review"** if you see that button (removes draft status)
-4. Then click **"Merge pull request"** → **"Confirm merge"**
+> **Important:** The PR is currently in **Draft** status. You must un-draft it before the merge button appears. Here's the full sequence:
 
-Done. The code is now on `main`. ✅
+1. **Go directly to the PR:**  
+   👉 [https://github.com/jeffsvendsonjr-jpg/shieldvault-code/pull/8](https://github.com/jeffsvendsonjr-jpg/shieldvault-code/pull/8)
+
+2. **Scroll to the very bottom** of the PR page.  
+   You'll see a grey banner that says *"This pull request is still a work in progress"* and a button:
+
+   > **[ Ready for review ]**
+
+   Click that button. The PR status changes from "Draft" to "Open" and the merge button appears.
+
+3. Now you'll see the merge section appear. Click:
+
+   > **[ Merge pull request ]**
+
+4. A confirmation prompt appears. Click:
+
+   > **[ Confirm merge ]**
+
+5. You'll see a purple banner: *"Pull request successfully merged and closed"* ✅
+
+   The code is now on `main` — GitHub will automatically start building the ZIP (see Step 4).
+
+> **If you don't see "Ready for review":** Make sure you're logged in as the repo owner (`jeffsvendsonjr-jpg`). The button only appears to the PR author and repo admins.
+
+> **If you see "This branch has conflicts":** Reply here and we'll fix it — but this is unlikely given the current state of the repo.
 
 ---
 
@@ -146,10 +167,10 @@ Google will review it within 1–3 business days and then publish it automatical
 |---|---|---|
 | Load in Chrome | 2 min | Click a button |
 | Test secret detection | 3 min | Type in a text box |
-| Merge the PR | 1 min | Click a button on GitHub |
+| Merge the PR | 2 min | Click 3 buttons on GitHub |
 | Download the ZIP | 30 sec | Click a link on GitHub Actions |
 | Upload to Chrome Web Store | 5 min | Click through a web form |
-| **Total** | **~12 min** | **No code required** |
+| **Total** | **~13 min** | **No code required** |
 
 ---
 
