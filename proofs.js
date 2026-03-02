@@ -124,6 +124,14 @@ function showView(view) {
   }
 }
 
+function showActiveTier(tier) {
+  const tierLabel = document.getElementById("tier-label");
+  if (tierLabel) {
+    const display = tier === "plus" ? "Plus" : "Basic";
+    tierLabel.textContent = `Active Tier: ${display}`;
+  }
+}
+
 function loadProStatus() {
   chrome.storage.local.get(["shieldvault_pro", "shieldvault_license_key"], (result) => {
     if (result.shieldvault_pro === true && result.shieldvault_license_key) {
@@ -143,14 +151,17 @@ function verifyStoredLicense(key) {
   .then(res => res.json())
   .then(data => {
     if (data.valid) {
-      showView("active");
+      chrome.storage.local.set({ shieldvault_tier: data.tier || "basic" }, () => {
+        showActiveTier(data.tier);
+        showView("active");
+      });
     } else {
-      chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"]);
+      chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key", "shieldvault_tier"]);
       showView("upgrade");
     }
   })
   .catch(() => {
-    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"]);
+    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key", "shieldvault_tier"]);
     showView("upgrade");
   });
 }
@@ -170,8 +181,10 @@ function activateLicense(key) {
     if (data.valid) {
       chrome.storage.local.set({
         shieldvault_pro: true,
-        shieldvault_license_key: key
+        shieldvault_license_key: key,
+        shieldvault_tier: data.tier || "basic"
       }, () => {
+        showActiveTier(data.tier);
         showView("active");
       });
     } else {
@@ -234,7 +247,7 @@ licenseKeyInput.addEventListener("keydown", (e) => {
 
 btnResetPro.addEventListener("click", () => {
   if (confirm("Deactivate your Pro status?")) {
-    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key"], () => {
+    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key", "shieldvault_tier"], () => {
       showView("upgrade");
     });
   }

@@ -10,6 +10,22 @@
 const DEV = false;
 
 // ================================
+// TIER STATE
+// ================================
+let shieldvaultTier = "basic";
+
+chrome.storage.local.get("shieldvault_tier", (result) => {
+  shieldvaultTier = result.shieldvault_tier || "basic";
+  registerBehavioralListeners();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.shieldvault_tier) {
+    shieldvaultTier = changes.shieldvault_tier.newValue || "basic";
+  }
+});
+
+// ================================
 // DEV LOGGING
 // ================================
 function devLog(...args) {
@@ -279,20 +295,7 @@ function handleDetection(text, el, vector, event) {
 // EVENT HOOKS
 // ================================
 
-// BEFOREINPUT — earliest possible interception
-document.addEventListener(
-  "beforeinput",
-  (e) => {
-    const incoming = typeof e.data === "string" ? e.data : "";
-    if (!incoming) return;
-
-    const el = getActiveEditable();
-    handleDetection(incoming, el, "typed", e);
-  },
-  true
-);
-
-// PASTE — clipboard interception
+// PASTE — clipboard interception (all tiers)
 document.addEventListener(
   "paste",
   (e) => {
@@ -306,52 +309,71 @@ document.addEventListener(
   true
 );
 
-// KEYDOWN (Enter) — last-chance guardrail before submit
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (e.key !== "Enter") return;
+// Behavioral blocks — registered after tier is loaded from storage (plus tier only)
+function registerBehavioralListeners() {
+  // BEFOREINPUT — earliest possible interception
+  document.addEventListener(
+    "beforeinput",
+    (e) => {
+      if (shieldvaultTier !== "plus") return;
+      const incoming = typeof e.data === "string" ? e.data : "";
+      if (!incoming) return;
 
-    const el = getActiveEditable();
-    if (!el) return;
+      const el = getActiveEditable();
+      handleDetection(incoming, el, "typed", e);
+    },
+    true
+  );
 
-    const value = getValue(el);
-    if (!value) return;
+  // KEYDOWN (Enter) — last-chance guardrail before submit
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (shieldvaultTier !== "plus") return;
+      if (e.key !== "Enter") return;
 
-    handleDetection(value, el, "submit", e);
-  },
-  true
-);
+      const el = getActiveEditable();
+      if (!el) return;
 
-// INPUT — fallback for anything that slipped through
-document.addEventListener(
-  "input",
-  (e) => {
-    const el = e.target;
-    if (!el) return;
+      const value = getValue(el);
+      if (!value) return;
 
-    if (
-      el.tagName !== "INPUT" &&
-      el.tagName !== "TEXTAREA" &&
-      !el.isContentEditable
-    ) {
-      return;
-    }
+      handleDetection(value, el, "submit", e);
+    },
+    true
+  );
 
-    const value = getValue(el);
-    if (!value) return;
+  // INPUT — fallback for anything that slipped through
+  document.addEventListener(
+    "input",
+    (e) => {
+      if (shieldvaultTier !== "plus") return;
+      const el = e.target;
+      if (!el) return;
 
-    const matches = detectSecrets(value);
-    if (matches.length === 0) return;
+      if (
+        el.tagName !== "INPUT" &&
+        el.tagName !== "TEXTAREA" &&
+        !el.isContentEditable
+      ) {
+        return;
+      }
 
-    hardNullify(el);
-    liftAndFadeGhost(el, value);
-    notifyBackground(matches, "input-fallback");
+      const value = getValue(el);
+      if (!value) return;
 
-    devWarn(`Fallback blocked: ${matches.join(", ")}`);
-  },
-  true
-);
+      const matches = detectSecrets(value);
+      if (matches.length === 0) return;
+
+      hardNullify(el);
+      liftAndFadeGhost(el, value);
+      notifyBackground(matches, "input-fallback");
+
+      devWarn(`Fallback blocked: ${matches.join(", ")}`);
+    },
+    true
+  );
+}
 
 // ================================
 // INIT
