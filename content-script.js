@@ -202,18 +202,6 @@ function detectSecrets(text) {
   return matches;
 }
 
-function detectBehaviors(text) {
-  if (!text || typeof text !== "string") return [];
-
-  const matches = [];
-  for (const detector of BEHAVIORAL_DETECTORS) {
-    if (detector.pattern.test(text)) {
-      matches.push(detector.name);
-    }
-  }
-  return matches;
-}
-
 // ================================
 // BEHAVIORAL DETECTION
 // ================================
@@ -233,114 +221,6 @@ function detectBehaviors(text) {
     }
   }
   return matches;
-}
-
-// ================================
-// BEHAVIORAL MODAL
-// ================================
-function showBehavioralModal(text, el) {
-  const titles = [
-    "🛑 The Preview of Shame",
-    "🧘 The future you strongly suggested reconsidering this.",
-    "😬 Vibe Check...",
-    "☕ The Morning-After Simulator",
-    "🌶️ Spicy Draft Detected",
-  ];
-  const title = titles[Math.floor(Math.random() * titles.length)];
-
-  // Backdrop
-  const backdrop = document.createElement("div");
-  backdrop.id = "shieldvault-behavioral-modal";
-  backdrop.style.position = "fixed";
-  backdrop.style.inset = "0";
-  backdrop.style.background = "rgba(0,0,0,0.55)";
-  backdrop.style.zIndex = "2147483646";
-  backdrop.style.display = "flex";
-  backdrop.style.alignItems = "center";
-  backdrop.style.justifyContent = "center";
-
-  // Modal box
-  const box = document.createElement("div");
-  box.style.background = "#fff";
-  box.style.borderRadius = "12px";
-  box.style.boxShadow = "0 8px 32px rgba(0,0,0,0.28)";
-  box.style.padding = "28px 32px";
-  box.style.maxWidth = "420px";
-  box.style.width = "90%";
-  box.style.fontFamily = "system-ui, sans-serif";
-  box.style.boxSizing = "border-box";
-
-  // Title
-  const titleEl = document.createElement("div");
-  titleEl.textContent = title;
-  titleEl.style.fontSize = "17px";
-  titleEl.style.fontWeight = "700";
-  titleEl.style.marginBottom = "14px";
-  titleEl.style.color = "#1a1a2e";
-  titleEl.style.lineHeight = "1.4";
-
-  // Content
-  const content = document.createElement("div");
-  content.textContent = text;
-  content.style.fontSize = "14px";
-  content.style.color = "#444";
-  content.style.background = "#f7f7f9";
-  content.style.borderRadius = "8px";
-  content.style.padding = "12px 14px";
-  content.style.marginBottom = "20px";
-  content.style.maxHeight = "120px";
-  content.style.overflowY = "auto";
-  content.style.wordBreak = "break-word";
-  content.style.lineHeight = "1.5";
-
-  // Buttons row
-  const btnRow = document.createElement("div");
-  btnRow.style.display = "flex";
-  btnRow.style.gap = "10px";
-  btnRow.style.justifyContent = "flex-end";
-
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "Edit Message";
-  editBtn.style.padding = "8px 18px";
-  editBtn.style.borderRadius = "7px";
-  editBtn.style.border = "1.5px solid #1a1a2e";
-  editBtn.style.background = "#fff";
-  editBtn.style.color = "#1a1a2e";
-  editBtn.style.fontWeight = "600";
-  editBtn.style.fontSize = "14px";
-  editBtn.style.cursor = "pointer";
-  editBtn.addEventListener("click", () => {
-    backdrop.remove();
-    if (el) el.focus();
-  });
-
-  const sendBtn = document.createElement("button");
-  sendBtn.textContent = "Send Anyway";
-  sendBtn.style.padding = "8px 18px";
-  sendBtn.style.borderRadius = "7px";
-  sendBtn.style.border = "none";
-  sendBtn.style.background = "#1a1a2e";
-  sendBtn.style.color = "#fff";
-  sendBtn.style.fontWeight = "600";
-  sendBtn.style.fontSize = "14px";
-  sendBtn.style.cursor = "pointer";
-  sendBtn.addEventListener("click", () => {
-    if (el) {
-      el.dataset.shieldvaultBypass = "true";
-      setTimeout(() => {
-        delete el.dataset.shieldvaultBypass;
-      }, 5000);
-    }
-    backdrop.remove();
-  });
-
-  btnRow.appendChild(editBtn);
-  btnRow.appendChild(sendBtn);
-  box.appendChild(titleEl);
-  box.appendChild(content);
-  box.appendChild(btnRow);
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
 }
 
 // ================================
@@ -424,11 +304,12 @@ function showBehavioralModal(text, el, warnings) {
     "top:50%",
     "left:50%",
     "transform:translate(-50%,-50%)",
-    "background:#1a1a2e",
-    "color:#fff",
-    "border:1px solid rgba(255,255,255,0.15)",
+    "background:rgba(255,255,255,0.6)",
+    "backdrop-filter:blur(16px) saturate(180%)",
+    "color:#1a1a2e",
+    "border:1px solid rgba(255,255,255,0.5)",
     "border-radius:12px",
-    "box-shadow:0 8px 32px rgba(0,0,0,0.5)",
+    "box-shadow:0 8px 32px rgba(0,0,0,0.1)",
     "padding:24px 28px",
     "max-width:420px",
     "width:90vw",
@@ -441,10 +322,10 @@ function showBehavioralModal(text, el, warnings) {
   modal.innerHTML = `
     <div style="font-size:18px;font-weight:700;margin-bottom:10px">🛡️ ShieldVault — Regret Check</div>
     <p style="margin:0 0 10px">Your message may come across as regrettable:</p>
-    <ul id="sv-warning-list" style="margin:0 0 16px;padding-left:18px;color:#fbbf24"></ul>
-    <p style="margin:0 0 18px;color:#a0aec0;font-size:13px">Take a breath — are you sure you want to send this?</p>
+    <ul id="sv-warning-list" style="margin:0 0 16px;padding-left:18px;color:#b45309"></ul>
+    <p style="margin:0 0 18px;color:#4a5568;font-size:13px">Take a breath — are you sure you want to send this?</p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button id="sv-edit-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#2d3748;color:#fff;cursor:pointer;font-size:14px">✏️ Edit Message</button>
+      <button id="sv-edit-btn" style="padding:8px 16px;border-radius:7px;border:1.5px solid #1a1a2e;background:transparent;color:#1a1a2e;cursor:pointer;font-size:14px">✏️ Edit Message</button>
       <button id="sv-send-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:14px">Send Anyway</button>
     </div>
   `;
@@ -565,17 +446,7 @@ document.addEventListener(
     const value = getValue(el);
     if (!value) return;
 
-    if (handleDetection(value, el, "submit", e)) return;
-
-    if (USER_TIER === "plus" && !el.dataset.shieldvaultBypass) {
-      const behaviors = detectBehaviors(value);
-      if (behaviors.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        showBehavioralModal(value, el);
-        devWarn(`Behavioral modal triggered: ${behaviors.join(", ")}`);
-      }
-    }
+    handleDetection(value, el, "submit", e);
   },
   true
 );
