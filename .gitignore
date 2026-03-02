@@ -1,0 +1,13 @@
+# Built extension zips
+*.zip
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Node (if ever used locally)
+node_modules/

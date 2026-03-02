@@ -1,0 +1,32 @@
+name: Package Extension
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: version
+        run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build zip
+        run: node scripts/build-zip.js
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shieldvault-v${{ steps.version.outputs.version }}
+          path: shieldvault-v${{ steps.version.outputs.version }}.zip
+          retention-days: 30

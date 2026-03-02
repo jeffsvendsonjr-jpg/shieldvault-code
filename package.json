@@ -1,0 +1,9 @@
+{
+  "name": "shieldvault",
+  "version": "1.2.0",
+  "description": "ShieldVault browser extension — packaging scripts",
+  "scripts": {
+    "zip": "node scripts/build-zip.js"
+  },
+  "private": true
+}
