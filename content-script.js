@@ -185,6 +185,138 @@ function detectSecrets(text) {
   return matches;
 }
 
+const BYPASS_TIMEOUT_MS = 5000;
+
+const BEHAVIORAL_PATTERNS = [
+  { name: "ALL_CAPS", pattern: /\b[A-Z]{4,}\b/ },
+  { name: "PER_MY_LAST_EMAIL", pattern: /per my last email/i },
+  { name: "EXCESSIVE_EXCLAMATION", pattern: /!{3,}/ },
+];
+
+function detectBehaviors(text) {
+  if (!text || typeof text !== "string") return [];
+
+  const matches = [];
+  for (const b of BEHAVIORAL_PATTERNS) {
+    if (b.pattern.test(text)) {
+      matches.push(b.name);
+    }
+  }
+  return matches;
+}
+
+// ================================
+// BEHAVIORAL MODAL
+// ================================
+function showBehavioralModal(text, el) {
+  const titles = [
+    "🛑 The Preview of Shame",
+    "🧘 The future you strongly suggested reconsidering this.",
+    "😬 Vibe Check...",
+    "☕ The Morning-After Simulator",
+    "🌶️ Spicy Draft Detected",
+  ];
+  const title = titles[Math.floor(Math.random() * titles.length)];
+
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "background:rgba(0,0,0,0.55)",
+    "z-index:2147483646",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+  ].join(";");
+
+  const box = document.createElement("div");
+  box.style.cssText = [
+    "background:#fff",
+    "border-radius:12px",
+    "box-shadow:0 8px 32px rgba(0,0,0,0.28)",
+    "padding:28px 32px",
+    "max-width:480px",
+    "width:90%",
+    "font-family:system-ui,sans-serif",
+    "color:#1a1a1a",
+  ].join(";");
+
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  heading.style.cssText = [
+    "margin:0 0 14px",
+    "font-size:17px",
+    "font-weight:700",
+    "line-height:1.3",
+  ].join(";");
+
+  const preview = document.createElement("p");
+  preview.style.cssText = [
+    "margin:0 0 22px",
+    "font-size:14px",
+    "line-height:1.6",
+    "white-space:pre-wrap",
+    "word-break:break-word",
+    "background:#f5f5f5",
+    "border-radius:8px",
+    "padding:12px",
+    "color:#333",
+    "max-height:160px",
+    "overflow-y:auto",
+  ].join(";");
+  preview.textContent = text;
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:12px;justify-content:flex-end";
+
+  const btnEdit = document.createElement("button");
+  btnEdit.textContent = "Edit Message";
+  btnEdit.style.cssText = [
+    "padding:9px 18px",
+    "border-radius:8px",
+    "border:1px solid #ccc",
+    "background:#fff",
+    "font-size:14px",
+    "font-weight:600",
+    "cursor:pointer",
+    "color:#333",
+  ].join(";");
+  btnEdit.addEventListener("click", () => {
+    backdrop.remove();
+    if (el) el.focus();
+  });
+
+  const btnSend = document.createElement("button");
+  btnSend.textContent = "Send Anyway";
+  btnSend.style.cssText = [
+    "padding:9px 18px",
+    "border-radius:8px",
+    "border:none",
+    "background:#e53e3e",
+    "color:#fff",
+    "font-size:14px",
+    "font-weight:600",
+    "cursor:pointer",
+  ].join(";");
+  btnSend.addEventListener("click", () => {
+    if (el) {
+      el.dataset.shieldvaultBypass = "true";
+      setTimeout(() => {
+        delete el.dataset.shieldvaultBypass;
+      }, BYPASS_TIMEOUT_MS);
+    }
+    backdrop.remove();
+  });
+
+  btnRow.appendChild(btnEdit);
+  btnRow.appendChild(btnSend);
+  box.appendChild(heading);
+  box.appendChild(preview);
+  box.appendChild(btnRow);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+}
+
 // ================================
 // CORE ACTIONS
 // ================================
@@ -318,7 +450,19 @@ document.addEventListener(
     const value = getValue(el);
     if (!value) return;
 
-    handleDetection(value, el, "submit", e);
+    if (handleDetection(value, el, "submit", e)) return;
+
+    // NoRegerts: behavioral check for plus-tier users
+    const userTier = "plus";
+    if (userTier === "plus" && !el.dataset.shieldvaultBypass) {
+      const behaviors = detectBehaviors(value);
+      if (behaviors.length > 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        showBehavioralModal(value, el);
+        devLog("Behavioral modal shown for:", behaviors.join(", "));
+      }
+    }
   },
   true
 );
