@@ -111,6 +111,18 @@ const DETECTORS = [
 ];
 
 // ================================
+// BEHAVIORAL PATTERN LIBRARY
+// ================================
+const BEHAVIORAL_DETECTORS = [
+  { name: "Shouting (all-caps)", pattern: /^[A-Z\s]{15,}$/ },
+  { name: "Aggressive Punctuation", pattern: /[!]{4,}|\?[!]{2,}/ },
+  { name: "Passive Aggressive", pattern: /per my last email|for future reference|with all due respect/i },
+  { name: "Hostile Opener", pattern: /^(you people|what the hell|are you serious|this is ridiculous|i can't believe you)/i },
+  { name: "Dismissive / Condescending", pattern: /clearly you don't understand|obviously you haven't|do i really need to explain/i },
+  { name: "Rage-quit threat", pattern: /i('m| am) done with (this|you)[^a-z]|i quit[^a-z]|screw this/i },
+];
+
+// ================================
 // HELPERS
 // ================================
 function getActiveEditable() {
@@ -185,6 +197,18 @@ function detectSecrets(text) {
   return matches;
 }
 
+function detectBehaviors(text) {
+  if (!text || typeof text !== "string") return [];
+
+  const matches = [];
+  for (const detector of BEHAVIORAL_DETECTORS) {
+    if (detector.pattern.test(text)) {
+      matches.push(detector.name);
+    }
+  }
+  return matches;
+}
+
 // ================================
 // CORE ACTIONS
 // ================================
@@ -252,27 +276,116 @@ function notifyBackground(detectorNames, vector) {
   }
 }
 
+function showBehavioralModal(text, el, warnings) {
+  // Avoid stacking duplicate modals
+  if (document.getElementById("shieldvault-behavioral-modal")) return;
+
+  // Freeze the input so the text stays visible but the user can't type more
+  if (el) el.setAttribute("readonly", "true");
+
+  const modal = document.createElement("div");
+  modal.id = "shieldvault-behavioral-modal";
+  modal.style.cssText = [
+    "position:fixed",
+    "top:50%",
+    "left:50%",
+    "transform:translate(-50%,-50%)",
+    "background:#1a1a2e",
+    "color:#fff",
+    "border:1px solid rgba(255,255,255,0.15)",
+    "border-radius:12px",
+    "box-shadow:0 8px 32px rgba(0,0,0,0.5)",
+    "padding:24px 28px",
+    "max-width:420px",
+    "width:90vw",
+    "z-index:2147483647",
+    "font-family:system-ui,sans-serif",
+    "font-size:14px",
+    "line-height:1.5",
+  ].join(";");
+
+  modal.innerHTML = `
+    <div style="font-size:18px;font-weight:700;margin-bottom:10px">🛡️ ShieldVault — Regret Check</div>
+    <p style="margin:0 0 10px">Your message may come across as regrettable:</p>
+    <ul id="sv-warning-list" style="margin:0 0 16px;padding-left:18px;color:#fbbf24"></ul>
+    <p style="margin:0 0 18px;color:#a0aec0;font-size:13px">Take a breath — are you sure you want to send this?</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="sv-edit-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#2d3748;color:#fff;cursor:pointer;font-size:14px">✏️ Edit Message</button>
+      <button id="sv-send-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:14px">Send Anyway</button>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const ul = modal.querySelector("#sv-warning-list");
+  for (const w of warnings) {
+    const li = document.createElement("li");
+    li.style.margin = "4px 0";
+    li.textContent = `⚠️ ${w}`;
+    ul.appendChild(li);
+  }
+
+  document.getElementById("sv-edit-btn").addEventListener("click", () => {
+    modal.remove();
+    if (el) {
+      el.removeAttribute("readonly");
+      el.focus();
+    }
+  });
+
+  document.getElementById("sv-send-btn").addEventListener("click", () => {
+    modal.remove();
+    if (el) {
+      el.removeAttribute("readonly");
+      el.dataset.shieldvaultBypass = "true";
+      setTimeout(() => {
+        delete el.dataset.shieldvaultBypass;
+      }, 5000);
+      el.focus();
+    }
+  });
+}
+
 // ================================
 // BLOCKING LOGIC
 // ================================
 function handleDetection(text, el, vector, event) {
-  const matches = detectSecrets(text);
-  if (matches.length === 0) return false;
+  // --- Hard block: secrets ---
+  const secretMatches = detectSecrets(text);
+  if (secretMatches.length > 0) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
 
-  if (event && typeof event.preventDefault === "function") {
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    if (el) {
+      // Clear any active bypass before hard-blocking
+      delete el.dataset.shieldvaultBypass;
+      hardNullify(el);
+      liftAndFadeGhost(el, text);
+    }
+
+    notifyBackground(secretMatches, vector);
+    devWarn(`Blocked: ${secretMatches.join(", ")} via ${vector}`);
+    return true;
   }
 
-  if (el) {
-    hardNullify(el);
-    liftAndFadeGhost(el, text);
+  // --- Soft block: behavioral ---
+  if (el && el.dataset.shieldvaultBypass === "true") return false;
+
+  const behaviorMatches = detectBehaviors(text);
+  if (behaviorMatches.length > 0) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    showBehavioralModal(text, el, behaviorMatches);
+    devWarn(`Behavioral warning: ${behaviorMatches.join(", ")} via ${vector}`);
+    return true;
   }
 
-  notifyBackground(matches, vector);
-
-  devWarn(`Blocked: ${matches.join(", ")} via ${vector}`);
-  return true;
+  return false;
 }
 
 // ================================
@@ -341,14 +454,26 @@ document.addEventListener(
     const value = getValue(el);
     if (!value) return;
 
-    const matches = detectSecrets(value);
-    if (matches.length === 0) return;
+    // Hard block: secrets
+    const secretMatches = detectSecrets(value);
+    if (secretMatches.length > 0) {
+      // Clear any active bypass before hard-blocking
+      delete el.dataset.shieldvaultBypass;
+      hardNullify(el);
+      liftAndFadeGhost(el, value);
+      notifyBackground(secretMatches, "input-fallback");
+      devWarn(`Fallback blocked: ${secretMatches.join(", ")}`);
+      return;
+    }
 
-    hardNullify(el);
-    liftAndFadeGhost(el, value);
-    notifyBackground(matches, "input-fallback");
+    // Soft block: behavioral (skip if bypass is active)
+    if (el.dataset.shieldvaultBypass === "true") return;
 
-    devWarn(`Fallback blocked: ${matches.join(", ")}`);
+    const behaviorMatches = detectBehaviors(value);
+    if (behaviorMatches.length > 0) {
+      showBehavioralModal(value, el, behaviorMatches);
+      devWarn(`Fallback behavioral warning: ${behaviorMatches.join(", ")}`);
+    }
   },
   true
 );
@@ -356,4 +481,4 @@ document.addEventListener(
 // ================================
 // INIT
 // ================================
-devLog("Content script loaded —", DETECTORS.length, "detectors active");
+devLog("Content script loaded —", DETECTORS.length, "detectors active,", BEHAVIORAL_DETECTORS.length, "behavioral detectors active");

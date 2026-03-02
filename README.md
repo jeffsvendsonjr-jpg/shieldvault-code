@@ -1,6 +1,13 @@
 # ShieldVault
 
-**Detect and block API keys, tokens, and secrets before you accidentally paste them into AI chats.**
+**Protect yourself from both leaked secrets and regrettable messages — before you hit send.**
+
+ShieldVault is a dual-purpose browser extension that keeps you safe in two ways:
+
+- **Hard Blocks (Secret Detection):** Instantly detects and wipes API keys, tokens, and credentials before they can be pasted or typed into any site.
+- **Soft Blocks (Regret Prevention / Digital Well-being):** Catches regrettable behavior — angry rants, passive-aggressive phrasing, all-caps shouting — and gives you a moment to reconsider before posting.
+
+ShieldVault now runs on AI chat platforms, social media (LinkedIn, Reddit, Twitter/X), and email (Gmail, Outlook) — anywhere an impulsive message can cause real damage.
 
 ## Tiers
 
@@ -16,7 +23,6 @@
 - We **never** track your browsing history or use analytics to monitor how you use the extension.
 
 ### What we DO:
-- To verify your ShieldVault Plus subscription, the extension checks your email address against our secure Stripe billing system. **We do not maintain a separate database of your emails**, and your email is strictly used for payment verification and customer support (e.g., managing your subscription or requesting refunds).
 - Your subscription status and extension settings are stored locally on your device.
 
 ## Links
@@ -24,4 +30,4 @@
 - [Chrome Web Store](https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao)
 - [Report Issues](https://github.com/jeffsvendsonjr-jpg/shieldvault-code/issues)
 
-Last updated: January 2026
+Last updated: March 2026
