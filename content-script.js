@@ -215,135 +215,6 @@ function detectBehaviors(text) {
 }
 
 // ================================
-// BEHAVIORAL DETECTION
-// ================================
-const BEHAVIORAL_PATTERNS = [
-  { name: "All Caps", pattern: /\b[A-Z]{4,}\b/ },
-  { name: "Per My Last Email", pattern: /per my last email/i },
-  { name: "Multiple Exclamation Marks", pattern: /!{2,}/ },
-];
-
-function detectBehaviors(text) {
-  if (!text || typeof text !== "string") return [];
-
-  const matches = [];
-  for (const bp of BEHAVIORAL_PATTERNS) {
-    if (bp.pattern.test(text)) {
-      matches.push(bp.name);
-    }
-  }
-  return matches;
-}
-
-// ================================
-// BEHAVIORAL MODAL
-// ================================
-function showBehavioralModal(text, el) {
-  const titles = [
-    "🛑 The Preview of Shame",
-    "🧘 The future you strongly suggested reconsidering this.",
-    "😬 Vibe Check...",
-    "☕ The Morning-After Simulator",
-    "🌶️ Spicy Draft Detected",
-  ];
-  const title = titles[Math.floor(Math.random() * titles.length)];
-
-  // Backdrop
-  const backdrop = document.createElement("div");
-  backdrop.id = "shieldvault-behavioral-modal";
-  backdrop.style.position = "fixed";
-  backdrop.style.inset = "0";
-  backdrop.style.background = "rgba(0,0,0,0.55)";
-  backdrop.style.zIndex = "2147483646";
-  backdrop.style.display = "flex";
-  backdrop.style.alignItems = "center";
-  backdrop.style.justifyContent = "center";
-
-  // Modal box
-  const box = document.createElement("div");
-  box.style.background = "#fff";
-  box.style.borderRadius = "12px";
-  box.style.boxShadow = "0 8px 32px rgba(0,0,0,0.28)";
-  box.style.padding = "28px 32px";
-  box.style.maxWidth = "420px";
-  box.style.width = "90%";
-  box.style.fontFamily = "system-ui, sans-serif";
-  box.style.boxSizing = "border-box";
-
-  // Title
-  const titleEl = document.createElement("div");
-  titleEl.textContent = title;
-  titleEl.style.fontSize = "17px";
-  titleEl.style.fontWeight = "700";
-  titleEl.style.marginBottom = "14px";
-  titleEl.style.color = "#1a1a2e";
-  titleEl.style.lineHeight = "1.4";
-
-  // Content
-  const content = document.createElement("div");
-  content.textContent = text;
-  content.style.fontSize = "14px";
-  content.style.color = "#444";
-  content.style.background = "#f7f7f9";
-  content.style.borderRadius = "8px";
-  content.style.padding = "12px 14px";
-  content.style.marginBottom = "20px";
-  content.style.maxHeight = "120px";
-  content.style.overflowY = "auto";
-  content.style.wordBreak = "break-word";
-  content.style.lineHeight = "1.5";
-
-  // Buttons row
-  const btnRow = document.createElement("div");
-  btnRow.style.display = "flex";
-  btnRow.style.gap = "10px";
-  btnRow.style.justifyContent = "flex-end";
-
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "Edit Message";
-  editBtn.style.padding = "8px 18px";
-  editBtn.style.borderRadius = "7px";
-  editBtn.style.border = "1.5px solid #1a1a2e";
-  editBtn.style.background = "#fff";
-  editBtn.style.color = "#1a1a2e";
-  editBtn.style.fontWeight = "600";
-  editBtn.style.fontSize = "14px";
-  editBtn.style.cursor = "pointer";
-  editBtn.addEventListener("click", () => {
-    backdrop.remove();
-    if (el) el.focus();
-  });
-
-  const sendBtn = document.createElement("button");
-  sendBtn.textContent = "Send Anyway";
-  sendBtn.style.padding = "8px 18px";
-  sendBtn.style.borderRadius = "7px";
-  sendBtn.style.border = "none";
-  sendBtn.style.background = "#1a1a2e";
-  sendBtn.style.color = "#fff";
-  sendBtn.style.fontWeight = "600";
-  sendBtn.style.fontSize = "14px";
-  sendBtn.style.cursor = "pointer";
-  sendBtn.addEventListener("click", () => {
-    if (el) {
-      el.dataset.shieldvaultBypass = "true";
-      setTimeout(() => {
-        delete el.dataset.shieldvaultBypass;
-      }, 5000);
-    }
-    backdrop.remove();
-  });
-
-  btnRow.appendChild(editBtn);
-  btnRow.appendChild(sendBtn);
-  box.appendChild(titleEl);
-  box.appendChild(content);
-  box.appendChild(btnRow);
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-}
-
-// ================================
 // CORE ACTIONS
 // ================================
 function hardNullify(el) {
@@ -572,7 +443,7 @@ document.addEventListener(
       if (behaviors.length > 0) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        showBehavioralModal(value, el);
+        showBehavioralModal(value, el, behaviors);
         devWarn(`Behavioral modal triggered: ${behaviors.join(", ")}`);
       }
     }
