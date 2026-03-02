@@ -40,6 +40,10 @@ The subscription flow is handled by a small Express.js server deployed to Replit
 
 See [`server/README.md`](server/README.md) for full deployment instructions (Replit setup, Stripe webhook registration, environment variables).
 
+## Local Testing
+
+See [`TESTING.md`](TESTING.md) for a step-by-step guide to sideloading the extension in Chrome and testing every scenario — secret detection (free, no server), behavioral modals (Pro, mock via DevTools), and the full Stripe end-to-end flow.
+
 ## Links
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao)
