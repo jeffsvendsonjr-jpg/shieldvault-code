@@ -25,6 +25,21 @@ ShieldVault now runs on AI chat platforms, social media (LinkedIn, Reddit, Twitt
 - Pro status is stored locally using Chrome's storage API
 - **Pro users only:** your license key (a random token like `SV-XXXX-XXXX-XXXX-XXXX`) is sent to our self-hosted licensing server (Replit) solely to verify it is valid. No browsing data, no secrets, and no message content are ever transmitted.
 
+## Pro Tier — Stripe Backend
+
+ShieldVault Pro ($3.99/month) unlocks behavioral analysis (soft-block modals for angry rants, passive-aggressive phrasing, etc.).
+
+The subscription flow is handled by a small Express.js server deployed to Replit:
+
+1. User clicks **"$3.99/month"** in the extension popup
+2. Server creates a Stripe Checkout Session → user pays on Stripe-hosted page
+3. Stripe webhook fires → server generates a `SV-XXXX-XXXX-XXXX-XXXX` license key
+4. User copies the key from the success page and enters it in the extension popup
+5. Extension verifies the key with the server → saves `shieldvault_pro=true` locally
+6. Behavioral modals are now active
+
+See [`server/README.md`](server/README.md) for full deployment instructions (Replit setup, Stripe webhook registration, environment variables).
+
 ## Links
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao)
