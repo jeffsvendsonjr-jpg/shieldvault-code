@@ -1,5 +1,7 @@
 # ShieldVault — Chrome Testing Guide
 
+> 👋 **New here or not sure where to start?** Read [`QUICKSTART.md`](QUICKSTART.md) first — it covers only the steps you actually need, with no command line or server setup.
+
 This guide covers every test scenario, from a two-minute smoke test to a full end-to-end Stripe Pro flow.  
 All "Free tier" tests work with **zero server setup**.
 

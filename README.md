@@ -42,7 +42,9 @@ See [`server/README.md`](server/README.md) for full deployment instructions (Rep
 
 ## Local Testing
 
-See [`TESTING.md`](TESTING.md) for a step-by-step guide to sideloading the extension in Chrome and testing every scenario — secret detection (free, no server), behavioral modals (Pro, mock via DevTools), and the full Stripe end-to-end flow.
+**First time?** See [`QUICKSTART.md`](QUICKSTART.md) — a beginner-friendly guide that covers only what you need: load in Chrome, verify secret detection, merge the PR, and upload the ZIP to the Web Store. No command line required.
+
+For full scenario coverage (including Stripe end-to-end), see [`TESTING.md`](TESTING.md).
 
 ## Links
 

@@ -1,5 +1,7 @@
 # ShieldVault v1.2.0 — Release Checklist
 
+> 👋 **Not sure where to start?** Open [`QUICKSTART.md`](QUICKSTART.md) — it walks through every step with no command line or coding required. Come back here to tick off items as you go.
+
 Use this checklist to track progress from local testing to a live Chrome Web Store update.
 
 ## 1. Chrome Testing (local sideload)
