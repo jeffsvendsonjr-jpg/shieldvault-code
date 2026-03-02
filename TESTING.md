@@ -201,3 +201,75 @@ The content script runs on all of these:
 | Behavioral modal not showing | Confirm `shieldvault_pro: true` is set (service worker console: `chrome.storage.local.get(null, console.log)`); confirm popup is closed while testing |
 | Popup shows "upgrade" even after setting storage | The popup called `verifyStoredLicense` and the server returned an error — run the mock Pro steps again and keep the popup closed while testing content-script behavior |
 | `fetch` blocked on localhost | Chrome blocks `http://` requests from extensions by default; temporarily add `"http://localhost:3000/*"` to `host_permissions` in `manifest.json` and reload the extension — **remove it before committing** |
+
+
+---
+
+## 5 — What's Next After Testing
+
+Work through sections 2–4 in order. Once everything passes, here's the exact sequence of remaining moves:
+
+### Step A — Mark the PR ready for review
+1. Open the current PR on GitHub (the one containing these docs)
+2. Click **"Ready for review"** (removes draft status)
+3. Request a review from a collaborator, or do a self-review of the diff if you are the sole maintainer
+4. Address any feedback, then click **Merge pull request** → **Confirm merge**
+
+### Step B — Update the Chrome Web Store listing (v1.2.0)
+
+v1.2.0 adds behavioral analysis (soft-block modals for angry/passive-aggressive messages) — this needs to be reflected in the store listing.
+
+1. Sign in at [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+2. Open the **ShieldVault** package
+3. In **Store listing**, update the **Description** to mention:
+   - "Soft-block behavioral modals — catches angry rants, passive-aggressive phrasing, all-caps shouting before you hit send"
+   - "Now covers 10 platforms: AI chats, LinkedIn, Reddit, Twitter/X, Gmail, Outlook"
+4. Upload a fresh **package ZIP**:
+   ```bash
+   # From the repo root — exclude anything not needed by the browser
+   zip -r shieldvault-v1.2.0.zip \
+     manifest.json \
+     background.js \
+     content-script.js \
+     proofs.html proofs.js proofs.css \
+     icons/
+   ```
+5. Upload the ZIP under **Package** → **Upload new package**
+6. Bump the **version** field if Chrome flags a version conflict (already `1.2.0` in `manifest.json`)
+7. Click **Submit for review** — Google's review typically takes 1–3 business days
+
+### Step C — Verify the live Replit server is running
+
+The extension popup contacts `https://extension-paywall.replit.app` for license verification. Confirm it's healthy before promoting the store update:
+
+```bash
+curl https://extension-paywall.replit.app/api/license/verify \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"licenseKey":"SV-0000-0000-0000-0000"}'
+# Expected: {"valid":false}  — confirms the server is reachable
+```
+
+If the Replit server has gone to sleep (free tier), open the Replit dashboard and click **Run** to wake it. Consider enabling **Always On** in Replit settings so it stays awake when real users activate licenses.
+
+### Step D — Confirm DEV logging is off before packaging
+
+Before zipping for the store, verify debug output is disabled:
+
+1. Open `content-script.js` and confirm line 1 reads:
+   ```js
+   const DEV = false;
+   ```
+2. If it says `true`, set it back to `false` and reload the extension once to confirm no `[ShieldVault]` console output appears on a supported page
+3. **Never ship a ZIP with `DEV = true`** — it exposes detection details in the browser console
+
+---
+
+## Checklist: Done? ✅
+
+- [ ] Section 2: Secret detection (paste + keystroke) passes on ChatGPT
+- [ ] Section 3: Behavioral modal fires correctly when Pro is mocked
+- [ ] Section 4: End-to-end Stripe flow completes (test card, license key, activation)
+- [ ] Step A: Feature PR merged into `main`
+- [ ] Step B: v1.2.0 ZIP submitted to Chrome Web Store
+- [ ] Step C: Replit server responding at `/api/license/verify`
