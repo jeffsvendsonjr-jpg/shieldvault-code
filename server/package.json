@@ -1,0 +1,19 @@
+{
+  "name": "shieldvault-server",
+  "version": "1.0.0",
+  "description": "ShieldVault licensing and Stripe checkout backend (deploy to Replit)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "stripe": "^20.4.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

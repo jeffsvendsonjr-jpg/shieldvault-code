@@ -202,7 +202,7 @@ clearBtn.addEventListener("click", () => {
 });
 
 btnMonthly.addEventListener("click", () => {
-  chrome.tabs.create({ url: API_BASE });
+  chrome.tabs.create({ url: `${API_BASE}/checkout` });
 });
 
 btnAlreadyPurchased.addEventListener("click", () => {

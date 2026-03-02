@@ -10,9 +10,19 @@
 const DEV = false;
 
 // ================================
-// TIER (assumed plus for behavioral modal)
+// TIER — read from chrome.storage.local (set by proofs.js on activation)
+// USER_TIER is only read inside event handlers (keydown), which cannot fire
+// before the storage callback completes — so no race condition in practice.
 // ================================
-const USER_TIER = "plus";
+let USER_TIER = "free";
+chrome.storage.local.get(["shieldvault_pro"], (result) => {
+  if (result.shieldvault_pro === true) USER_TIER = "plus";
+});
+chrome.storage.onChanged.addListener((changes) => {
+  if ("shieldvault_pro" in changes) {
+    USER_TIER = changes.shieldvault_pro.newValue === true ? "plus" : "free";
+  }
+});
 
 // ================================
 // DEV LOGGING

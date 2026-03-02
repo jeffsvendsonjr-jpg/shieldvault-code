@@ -11,3 +11,7 @@ Thumbs.db
 
 # Node (if ever used locally)
 node_modules/
+
+# Server — secrets and generated data
+server/.env
+server/licenses.json
