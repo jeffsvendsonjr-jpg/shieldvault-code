@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to userp.ly</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #020617;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container { max-width: 560px; width: 100%; padding: 48px 32px; text-align: center; }
+    .shield { width: 48px; height: 48px; color: #4ade80; margin: 0 auto 24px; }
+    h1 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 8px; letter-spacing: -0.02em; }
+    .subtitle { font-size: 15px; color: #94a3b8; margin-bottom: 40px; line-height: 1.5; }
+    .steps { text-align: left; margin-bottom: 40px; }
+    .step { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid rgba(148,163,184,0.08); }
+    .step:last-child { border-bottom: none; }
+    .step-num { width: 28px; height: 28px; border-radius: 50%; background: rgba(34,197,94,0.12); color: #4ade80; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .step-content h3 { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+    .step-content p { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+    .legend { background: rgba(148,163,184,0.04); border: 1px solid rgba(148,163,184,0.08); border-radius: 12px; padding: 20px; margin-bottom: 32px; text-align: left; }
+    .legend h3 { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .pill-demo { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.7; margin: 2px 4px; }
+    .pill-green { background: rgba(34,197,94,0.12); color: #16a34a; border: 1px solid rgba(34,197,94,0.25); }
+    .pill-blue { background: rgba(14,165,233,0.12); color: #0284c7; border: 1px solid rgba(14,165,233,0.25); }
+    .pill-amber { background: rgba(245,158,11,0.12); color: #d97706; border: 1px solid rgba(245,158,11,0.25); }
+    .pill-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+    .pill-green .pill-dot { background: #16a34a; }
+    .pill-blue .pill-dot { background: #0284c7; }
+    .pill-amber .pill-dot { background: #d97706; }
+    .legend-text { font-size: 12px; color: #cbd5e1; }
+    .cta { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #22c55e; color: #fff; font-size: 14px; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; text-decoration: none; transition: background 0.15s; }
+    .cta:hover { background: #16a34a; }
+    .note { font-size: 11px; color: #64748b; margin-top: 16px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <svg class="shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+    <h1>Welcome to userp.ly</h1>
+    <p class="subtitle">You now have publish date verification on every search result. Here's how it works.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-content"><h3>Search normally</h3><p>Use Google, Bing, or DuckDuckGo as usual. The extension works automatically in the background.</p></div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-content"><h3>See verification pills</h3><p>Each search result gets a small pill showing when the content was first archived by the Wayback Machine.</p></div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-content"><h3>Spot outdated or misleading content</h3><p>Articles claiming to be recent but first seen years ago? You'll know instantly.</p></div></div>
+    </div>
+    <div class="legend">
+      <h3>Pill Colors</h3>
+      <div class="legend-item"><span class="pill-demo pill-green"><span class="pill-dot"></span> Verified: Mar 15, 2024</span><span class="legend-text">Date confirmed by archive</span></div>
+      <div class="legend-item"><span class="pill-demo pill-blue"><span class="pill-dot"></span> First seen: Jan 8, 2023</span><span class="legend-text">No date claimed, showing archive date</span></div>
+      <div class="legend-item"><span class="pill-demo pill-amber"><span class="pill-dot"></span> First seen Jun 2021 (claims Dec 2023)</span><span class="legend-text">Date mismatch detected</span></div>
+    </div>
+    <a href="https://www.google.com/search?q=latest+news" class="cta">Try a search now</a>
+    <p class="note">Click the extension icon anytime to check status.</p>
+  </div>
+</body>
+</html>

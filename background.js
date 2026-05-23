@@ -1,51 +1,46 @@
-// ======================================================
-// ShieldVault — Background Service Worker
-// Session-only Proofs of Prevention
-// No storage, no telemetry, no persistence
-// ======================================================
+// Service worker for userp.ly extension
+// Review-hardened: no analytics or install/update event tracking.
 
-// ================================
-// SESSION MEMORY (dies with browser)
-// ================================
-const proofs = [];
+const SUPABASE_URL = 'https://nihquqccvnfuaqsxyymj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paHF1cWNjdm5mdWFxc3h5eW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjQ1ODIsImV4cCI6MjA5NDY0MDU4Mn0.Q0ea1N8iWDoy0KzbFvL4rFYg0liZevnC3AFUDiJY1yE';
+const VERIFY_URL = `${SUPABASE_URL}/functions/v1/verify-date`;
 
-// ================================
-// MESSAGE HANDLERS
-// ================================
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: 'onboarding.html' });
+  }
+});
 
-  if (msg?.type === "SHIELDVAULT_PREVENTED") {
-    const proof = {
-      id: crypto.randomUUID(),
-      time: Date.now(),
-      domain: "unknown",
-      detectors: msg.detectors || ["Unknown"],
-      vector: msg.vector || "input"
-    };
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || message.type !== 'USERPLY_VERIFY_DATE') return false;
 
-    if (sender?.tab?.url) {
-      try {
-        proof.domain = new URL(sender.tab.url).hostname;
-      } catch {}
-    } else if (sender?.url) {
-      try {
-        proof.domain = new URL(sender.url).hostname;
-      } catch {}
+  (async () => {
+    try {
+      const res = await fetch(VERIFY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          url: message.url,
+          claimed_date: message.claimedDate || undefined,
+          anonymous_id: message.anonymousId,
+        }),
+      });
+
+      if (!res.ok) {
+        sendResponse({ ok: false, status: res.status });
+        return;
+      }
+
+      const data = await res.json();
+      sendResponse({ ok: true, data });
+    } catch (error) {
+      sendResponse({ ok: false, error: String(error && error.message ? error.message : error) });
     }
+  })();
 
-    proofs.unshift(proof);
-    if (proofs.length > 100) proofs.pop();
-    return;
-  }
-
-  if (msg?.type === "GET_PROOFS") {
-    sendResponse({ proofs });
-    return true;
-  }
-
-  if (msg?.type === "CLEAR_PROOFS") {
-    proofs.length = 0;
-    sendResponse({ success: true });
-    return true;
-  }
+  return true;
 });
