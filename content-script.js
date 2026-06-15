@@ -8,6 +8,20 @@
 // ENV
 // ================================
 const DEV = false;
+const SHIELDVAULT_SETTINGS_KEY = "shieldvaultSettings";
+const SHIELDVAULT_DEFAULT_SETTINGS = {
+  secretGuard: true,
+  tokenGuard: true,
+  passwordGuard: true,
+  recoveryPhraseGuard: true,
+  privateInfoGuard: true,
+  clientDataGuard: true,
+  largePasteGuard: true,
+  reputationGuard: false,
+  lateNightPostAlert: false,
+  emotionalPostWarning: false,
+};
+let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 
 // ================================
 // TIER (assumed plus for behavioral modal)
@@ -23,6 +37,36 @@ function devLog(...args) {
 
 function devWarn(...args) {
   if (DEV) console.warn("[ShieldVault]", ...args);
+}
+
+function mergeSettings(raw) {
+  return { ...SHIELDVAULT_DEFAULT_SETTINGS, ...(raw || {}) };
+}
+
+async function loadShieldVaultSettings() {
+  try {
+    const data = await chrome.storage.local.get([SHIELDVAULT_SETTINGS_KEY]);
+    SHIELDVAULT_SETTINGS = mergeSettings(data && data[SHIELDVAULT_SETTINGS_KEY]);
+  } catch (_) {
+    SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
+  }
+}
+
+async function disableSubjectiveWarning(type) {
+  const updated = { ...SHIELDVAULT_SETTINGS };
+  if (type === "lateNight") {
+    updated.lateNightPostAlert = false;
+  }
+  if (type === "emotional") {
+    updated.emotionalPostWarning = false;
+  }
+  updated.reputationGuard = Boolean(updated.lateNightPostAlert || updated.emotionalPostWarning);
+  SHIELDVAULT_SETTINGS = updated;
+  try {
+    await chrome.storage.local.set({ [SHIELDVAULT_SETTINGS_KEY]: updated });
+  } catch (_) {
+    // Ignore storage failures in content script.
+  }
 }
 
 // ================================
@@ -192,14 +236,44 @@ function setValue(el, value) {
 // ================================
 function detectSecrets(text) {
   if (!text || typeof text !== "string") return [];
+  if (!SHIELDVAULT_SETTINGS.secretGuard) return [];
 
   const matches = [];
   for (const detector of DETECTORS) {
+    if (!isDetectorEnabled(detector.name)) continue;
     if (detector.pattern.test(text)) {
       matches.push(detector.name);
     }
   }
+
+  if (SHIELDVAULT_SETTINGS.passwordGuard && /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i.test(text)) {
+    matches.push("Password-like string");
+  }
+
+  if (SHIELDVAULT_SETTINGS.recoveryPhraseGuard && /\b(?:recovery phrase|seed phrase|mnemonic phrase)\b/i.test(text)) {
+    matches.push("Recovery phrase mention");
+  }
+
+  if (SHIELDVAULT_SETTINGS.privateInfoGuard && (/\b\d{3}-\d{2}-\d{4}\b/.test(text) || /\b(?:dob|date of birth)\b/i.test(text))) {
+    matches.push("Private personal info");
+  }
+
+  if (SHIELDVAULT_SETTINGS.clientDataGuard && /\b(?:client data|customer data|confidential client|internal only)\b/i.test(text)) {
+    matches.push("Client/customer data");
+  }
+
+  if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
+    matches.push("Large sensitive paste");
+  }
   return matches;
+}
+
+function isDetectorEnabled(detectorName) {
+  const name = String(detectorName || "").toLowerCase();
+  if (name.includes("token") || name.includes("pat")) {
+    return SHIELDVAULT_SETTINGS.tokenGuard;
+  }
+  return SHIELDVAULT_SETTINGS.secretGuard;
 }
 
 // ================================
@@ -213,6 +287,7 @@ const BEHAVIORAL_PATTERNS = [
 
 function detectBehaviors(text) {
   if (!text || typeof text !== "string") return [];
+  if (!SHIELDVAULT_SETTINGS.reputationGuard && !SHIELDVAULT_SETTINGS.emotionalPostWarning) return [];
 
   const matches = [];
   for (const bp of BEHAVIORAL_PATTERNS) {
@@ -221,6 +296,15 @@ function detectBehaviors(text) {
     }
   }
   return matches;
+}
+
+function detectLateNightWarning(text, vector) {
+  if (!text || typeof text !== "string") return false;
+  if (!SHIELDVAULT_SETTINGS.lateNightPostAlert) return false;
+  if (vector !== "submit") return false;
+  if (text.trim().length < 20) return false;
+  const hour = new Date().getHours();
+  return hour >= 23 || hour < 5;
 }
 
 // ================================
@@ -290,7 +374,7 @@ function notifyBackground(detectorNames, vector) {
   }
 }
 
-function showBehavioralModal(text, el, warnings) {
+function showBehavioralModal(text, el, warnings, warningTypes) {
   // Avoid stacking duplicate modals
   if (document.getElementById("shieldvault-behavioral-modal")) return;
 
@@ -325,6 +409,7 @@ function showBehavioralModal(text, el, warnings) {
     <ul id="sv-warning-list" style="margin:0 0 16px;padding-left:18px;color:#b45309"></ul>
     <p style="margin:0 0 18px;color:#4a5568;font-size:13px">Take a breath — are you sure you want to send this?</p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="sv-disable-btn" style="padding:8px 12px;border-radius:7px;border:1.5px solid #1a1a2e;background:transparent;color:#1a1a2e;cursor:pointer;font-size:13px">Turn off this warning</button>
       <button id="sv-edit-btn" style="padding:8px 16px;border-radius:7px;border:1.5px solid #1a1a2e;background:transparent;color:#1a1a2e;cursor:pointer;font-size:14px">✏️ Edit Message</button>
       <button id="sv-send-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:14px">Send Anyway</button>
     </div>
@@ -359,6 +444,18 @@ function showBehavioralModal(text, el, warnings) {
       el.focus();
     }
   });
+
+  const disableType = Array.isArray(warningTypes) && warningTypes.includes("lateNight")
+    ? "lateNight"
+    : "emotional";
+  document.getElementById("sv-disable-btn").addEventListener("click", async () => {
+    await disableSubjectiveWarning(disableType);
+    modal.remove();
+    if (el) {
+      el.removeAttribute("readonly");
+      el.focus();
+    }
+  });
 }
 
 // ================================
@@ -388,15 +485,26 @@ function handleDetection(text, el, vector, event) {
   // --- Soft block: behavioral ---
   if (el && el.dataset.shieldvaultBypass === "true") return false;
 
+  const warnings = [];
+  const warningTypes = [];
   const behaviorMatches = detectBehaviors(text);
   if (behaviorMatches.length > 0) {
+    warnings.push(...behaviorMatches);
+    warningTypes.push("emotional");
+  }
+  if (detectLateNightWarning(text, vector)) {
+    warnings.push("Late-night posting check");
+    warningTypes.push("lateNight");
+  }
+
+  if (warnings.length > 0) {
     if (event && typeof event.preventDefault === "function") {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
 
-    showBehavioralModal(text, el, behaviorMatches);
-    devWarn(`Behavioral warning: ${behaviorMatches.join(", ")} via ${vector}`);
+    showBehavioralModal(text, el, warnings, warningTypes);
+    devWarn(`Behavioral warning: ${warnings.join(", ")} via ${vector}`);
     return true;
   }
 
@@ -486,7 +594,7 @@ document.addEventListener(
 
     const behaviorMatches = detectBehaviors(value);
     if (behaviorMatches.length > 0) {
-      showBehavioralModal(value, el, behaviorMatches);
+      showBehavioralModal(value, el, behaviorMatches, ["emotional"]);
       devWarn(`Fallback behavioral warning: ${behaviorMatches.join(", ")}`);
     }
   },
@@ -497,3 +605,4 @@ document.addEventListener(
 // INIT
 // ================================
 devLog("Content script loaded —", DETECTORS.length, "detectors active,", BEHAVIORAL_DETECTORS.length, "behavioral detectors active");
+loadShieldVaultSettings();

@@ -1,33 +1,89 @@
-(function() {
+(function () {
   'use strict';
-  const SETTINGS_KEY = 'userply_settings';
-  const defaults = { enabled: true, pillPosition: 'below', showNoArchive: true, disabledSites: [] };
-  function load() { try { const raw = localStorage.getItem(SETTINGS_KEY); return raw ? { ...defaults, ...JSON.parse(raw) } : { ...defaults }; } catch { return { ...defaults }; } }
-  function save(settings) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); showSaved(); }
-  function showSaved() { const msg = document.getElementById('saved-msg'); msg.classList.add('show'); setTimeout(function() { msg.classList.remove('show'); }, 1500); }
-  function renderDisabledList(settings) {
-    var list = document.getElementById('disabled-list');
-    list.innerHTML = '';
-    settings.disabledSites.forEach(function(site, i) {
-      var li = document.createElement('li'); li.textContent = site;
-      var btn = document.createElement('button'); btn.textContent = '\u00d7'; btn.setAttribute('aria-label', 'Remove ' + site);
-      btn.addEventListener('click', function() { settings.disabledSites.splice(i, 1); save(settings); renderDisabledList(settings); });
-      li.appendChild(btn); list.appendChild(li);
-    });
+
+  const SETTINGS_KEY = 'shieldvaultSettings';
+  const DEFAULTS = {
+    secretGuard: true,
+    tokenGuard: true,
+    passwordGuard: true,
+    recoveryPhraseGuard: true,
+    privateInfoGuard: true,
+    clientDataGuard: true,
+    largePasteGuard: true,
+    reputationGuard: false,
+    lateNightPostAlert: false,
+    emotionalPostWarning: false,
+  };
+
+  const ids = Object.keys(DEFAULTS);
+  const savedMsg = document.getElementById('saved-msg');
+
+  function merged(raw) {
+    return { ...DEFAULTS, ...(raw || {}) };
   }
-  var settings = load();
-  document.getElementById('toggle-enabled').checked = settings.enabled;
-  document.getElementById('pill-position').value = settings.pillPosition;
-  document.getElementById('toggle-noarchive').checked = settings.showNoArchive;
-  renderDisabledList(settings);
-  document.getElementById('toggle-enabled').addEventListener('change', function(e) { settings.enabled = e.target.checked; save(settings); });
-  document.getElementById('pill-position').addEventListener('change', function(e) { settings.pillPosition = e.target.value; save(settings); });
-  document.getElementById('toggle-noarchive').addEventListener('change', function(e) { settings.showNoArchive = e.target.checked; save(settings); });
-  document.getElementById('add-site-btn').addEventListener('click', function() {
-    var input = document.getElementById('new-site');
-    var site = input.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-    if (site && !settings.disabledSites.includes(site)) { settings.disabledSites.push(site); save(settings); renderDisabledList(settings); input.value = ''; }
+
+  function showSaved() {
+    savedMsg.classList.add('show');
+    setTimeout(function () {
+      savedMsg.classList.remove('show');
+    }, 1100);
+  }
+
+  async function save(state) {
+    await chrome.storage.local.set({ [SETTINGS_KEY]: state });
+    showSaved();
+  }
+
+  async function load() {
+    const data = await chrome.storage.local.get([SETTINGS_KEY]);
+    const state = merged(data && data[SETTINGS_KEY]);
+
+    ids.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.checked = Boolean(state[id]);
+    });
+
+    return state;
+  }
+
+  function collectState() {
+    const state = {};
+    ids.forEach(function (id) {
+      state[id] = Boolean(document.getElementById(id).checked);
+    });
+
+    if (!state.reputationGuard) {
+      state.lateNightPostAlert = false;
+      state.emotionalPostWarning = false;
+      document.getElementById('lateNightPostAlert').checked = false;
+      document.getElementById('emotionalPostWarning').checked = false;
+    }
+
+    if (state.lateNightPostAlert || state.emotionalPostWarning) {
+      state.reputationGuard = true;
+      document.getElementById('reputationGuard').checked = true;
+    }
+
+    return state;
+  }
+
+  load().then(function (state) {
+    ids.forEach(function (id) {
+      document.getElementById(id).addEventListener('change', async function () {
+        if (id === 'reputationGuard' && !document.getElementById('reputationGuard').checked) {
+          document.getElementById('lateNightPostAlert').checked = false;
+          document.getElementById('emotionalPostWarning').checked = false;
+        }
+        const updated = collectState();
+        await save(updated);
+      });
+    });
+
+    save(state).catch(function () {});
+  }).catch(function () {
+    ids.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.checked = Boolean(DEFAULTS[id]);
+    });
   });
-  document.getElementById('new-site').addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('add-site-btn').click(); });
-  document.getElementById('clear-cache').addEventListener('click', function() { localStorage.removeItem('userply_cache'); showSaved(); });
 })();
