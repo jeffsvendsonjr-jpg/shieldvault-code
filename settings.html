@@ -3,64 +3,66 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>userp.ly Settings</title>
+  <title>ShieldVault Settings</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #020617; color: #e2e8f0; min-height: 100vh; padding: 48px 24px; }
-    .container { max-width: 480px; margin: 0 auto; }
-    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
-    .header svg { width: 24px; height: 24px; color: #4ade80; }
-    .header h1 { font-size: 18px; font-weight: 700; color: #fff; }
-    .section { background: rgba(148,163,184,0.04); border: 1px solid rgba(148,163,184,0.1); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-    .section-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
-    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(148,163,184,0.06); }
-    .setting-row:last-child { border-bottom: none; }
-    .setting-label { font-size: 13px; color: #e2e8f0; font-weight: 500; }
-    .setting-desc { font-size: 11px; color: #64748b; margin-top: 2px; }
-    .toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+    :root {
+      --bg: #0b0d12;
+      --panel: #131722;
+      --text: #e6e8ee;
+      --muted: #8a8f9c;
+      --accent: #4c6fff;
+      --good: #34d399;
+      --border: #1f2433;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 30px 18px; }
+    .container { width: min(680px, 100%); margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .panel h2 { margin: 0 0 4px; font-size: 15px; }
+    .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .row:last-child { border-bottom: 0; }
+    .label { font-size: 13px; }
+    .toggle { position: relative; width: 38px; height: 20px; }
     .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle .slider { position: absolute; inset: 0; background: #334155; border-radius: 10px; transition: background 0.2s; }
-    .toggle .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
-    .toggle input:checked + .slider { background: #22c55e; }
-    .toggle input:checked + .slider::before { transform: translateX(16px); }
-    select { background: #1e293b; color: #e2e8f0; border: 1px solid rgba(148,163,184,0.2); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; outline: none; }
-    select:focus { border-color: #4ade80; }
-    .disabled-site-list { list-style: none; margin-bottom: 8px; }
-    .disabled-site-list li { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(148,163,184,0.06); border-radius: 6px; margin-bottom: 4px; font-size: 12px; color: #94a3b8; }
-    .disabled-site-list li button { background: none; border: none; color: #f87171; cursor: pointer; font-size: 14px; padding: 0 4px; }
-    .add-site { display: flex; gap: 6px; }
-    .add-site input { flex: 1; background: #1e293b; color: #e2e8f0; border: 1px solid rgba(148,163,184,0.2); border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none; }
-    .add-site input:focus { border-color: #4ade80; }
-    .add-site button { background: #22c55e; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .add-site button:hover { background: #16a34a; }
-    .saved-msg { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #22c55e; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-    .saved-msg.show { opacity: 1; }
+    .slider { position: absolute; inset: 0; background: #334155; border-radius: 999px; transition: .2s; }
+    .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .2s; }
+    .toggle input:checked + .slider { background: var(--good); }
+    .toggle input:checked + .slider::before { transform: translateX(18px); }
+    .saved { color: var(--good); font-size: 12px; opacity: 0; transition: opacity .2s; }
+    .saved.show { opacity: 1; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <h1>Settings</h1>
-    </div>
-    <div class="section">
-      <div class="section-title">Display</div>
-      <div class="setting-row"><div><div class="setting-label">Show verification pills</div><div class="setting-desc">Display date verification badges on search results</div></div><label class="toggle"><input type="checkbox" id="toggle-enabled" checked><span class="slider"></span></label></div>
-      <div class="setting-row"><div><div class="setting-label">Pill position</div><div class="setting-desc">Where to place the badge relative to the title</div></div><select id="pill-position"><option value="below">Below title</option><option value="inline">Inline with title</option></select></div>
-      <div class="setting-row"><div><div class="setting-label">Show on no-archive results</div><div class="setting-desc">Display pill even when no archive record exists</div></div><label class="toggle"><input type="checkbox" id="toggle-noarchive" checked><span class="slider"></span></label></div>
-    </div>
-    <div class="section">
-      <div class="section-title">Disabled Sites</div>
-      <p style="font-size:12px;color:#64748b;margin-bottom:12px;">The extension will not run on these domains.</p>
-      <ul class="disabled-site-list" id="disabled-list"></ul>
-      <div class="add-site"><input type="text" id="new-site" placeholder="e.g. reddit.com"><button id="add-site-btn">Add</button></div>
-    </div>
-    <div class="section">
-      <div class="section-title">Data</div>
-      <div class="setting-row"><div><div class="setting-label">Clear verification cache</div><div class="setting-desc">Remove all cached date verification results</div></div><button id="clear-cache" style="background:#1e293b;color:#f87171;border:1px solid rgba(248,113,113,0.3);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;">Clear</button></div>
-    </div>
+    <h1>ShieldVault Settings</h1>
+    <p class="sub">Core Leak Protection stays separate from Optional Reputation Guard.</p>
+
+    <section class="panel">
+      <h2>Core Leak Protection</h2>
+      <p class="hint">Recommended default: ON</p>
+      <div class="row"><span class="label">Secrets and API keys</span><label class="toggle"><input id="secretGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Token detection</span><label class="toggle"><input id="tokenGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Password-like string detection</span><label class="toggle"><input id="passwordGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Recovery phrase detection</span><label class="toggle"><input id="recoveryPhraseGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Private personal info detection</span><label class="toggle"><input id="privateInfoGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Client/customer data detection</span><label class="toggle"><input id="clientDataGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Large sensitive paste warning</span><label class="toggle"><input id="largePasteGuard" type="checkbox"><span class="slider"></span></label></div>
+    </section>
+
+    <section class="panel">
+      <h2>Optional Reputation Guard</h2>
+      <p class="hint">Default: OFF</p>
+      <div class="row"><span class="label">Enable Reputation Guard</span><label class="toggle"><input id="reputationGuard" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Late-night posting check</span><label class="toggle"><input id="lateNightPostAlert" type="checkbox"><span class="slider"></span></label></div>
+      <div class="row"><span class="label">Emotionally heated / rage-post warning</span><label class="toggle"><input id="emotionalPostWarning" type="checkbox"><span class="slider"></span></label></div>
+    </section>
+
+    <div class="saved" id="saved-msg">Settings saved.</div>
   </div>
-  <div class="saved-msg" id="saved-msg">Settings saved</div>
+
   <script src="settings.js"></script>
 </body>
 </html>
