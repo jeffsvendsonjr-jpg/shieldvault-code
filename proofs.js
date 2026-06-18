@@ -339,8 +339,13 @@ function loadProStatus() {
   chrome.storage.local.get(
     ["shieldvault_pro", "shieldvault_license_key", "shieldvault_behavioral_uses"],
     (result) => {
+      const quotaBadge = document.getElementById("sv-behavioral-quota-badge");
       if (result.shieldvault_pro === true && result.shieldvault_license_key) {
         verifyStoredLicense(result.shieldvault_license_key);
+        if (quotaBadge) {
+          quotaBadge.textContent = "unlimited ✓";
+          quotaBadge.style.color = "#34d399";
+        }
       } else {
         const uses = typeof result.shieldvault_behavioral_uses === "number"
           ? result.shieldvault_behavioral_uses
@@ -354,6 +359,20 @@ function loadProStatus() {
             quotaStatus.textContent = "Behavioral warning quota used — resets Sunday";
             quotaStatus.style.color = "#dc2626";
             quotaStatus.style.fontWeight = "600";
+          }
+        }
+        if (quotaBadge) {
+          if (remaining <= 0) {
+            quotaBadge.textContent = "0 of 10 free/week — upgrade";
+            quotaBadge.style.color = "#dc2626";
+            quotaBadge.style.fontWeight = "700";
+          } else if (remaining <= 3) {
+            quotaBadge.textContent = `${remaining} of 10 free warnings left this week`;
+            quotaBadge.style.color = "#b45309";
+            quotaBadge.style.fontWeight = "600";
+          } else {
+            quotaBadge.textContent = `${remaining} of 10 free warnings/week`;
+            quotaBadge.style.color = "";
           }
         }
         showView("upgrade");
@@ -434,6 +453,17 @@ function setupFirstRunDemo() {
 
   if (!demoInput || !demoResult) return;
 
+  function showDemoUpsell(container, type) {
+    const existingUpsell = container.querySelector(".demo-upsell");
+    if (existingUpsell) existingUpsell.remove();
+    const upsell = document.createElement("p");
+    upsell.className = "demo-upsell";
+    upsell.innerHTML = type === "behavioral"
+      ? `Behavioral checks: 10 free/week. <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" class="demo-upsell-link">Unlock unlimited →</a>`
+      : `Secrets are always blocked free. Want unlimited behavioral protection too? <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" class="demo-upsell-link">See plans →</a>`;
+    container.appendChild(upsell);
+  }
+
   function isSecret(text) {
     return [
       /sk_(test|live)_[A-Za-z0-9]+/i,
@@ -461,6 +491,8 @@ function setupFirstRunDemo() {
     demoResult.classList.remove("show", "secret", "behavioral");
     demoTitle.textContent = "";
     demoCopy.textContent = "";
+    const existingUpsell = demoResult.querySelector(".demo-upsell");
+    if (existingUpsell) existingUpsell.remove();
 
     if (!value) return;
 
@@ -468,6 +500,7 @@ function setupFirstRunDemo() {
       demoResult.classList.add("show", "secret");
       demoTitle.textContent = "Blocked before it left your device";
       demoCopy.textContent = "ShieldVault catches sensitive data before it slips out.";
+      showDemoUpsell(demoResult, "secret");
       return;
     }
 
@@ -475,6 +508,7 @@ function setupFirstRunDemo() {
       demoResult.classList.add("show", "behavioral");
       demoTitle.textContent = "Pause before sending?";
       demoCopy.textContent = "Written hot. Read cold.";
+      showDemoUpsell(demoResult, "behavioral");
     }
   }
 

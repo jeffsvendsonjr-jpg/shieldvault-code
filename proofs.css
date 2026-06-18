@@ -696,6 +696,23 @@ footer {
   margin: 0;
 }
 
+.demo-upsell {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.demo-upsell-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.demo-upsell-link:hover {
+  text-decoration: underline;
+}
+
 /* ================================
    SETTINGS CALLOUT (v1.5 — explains default toggle states to new users)
    ================================ */

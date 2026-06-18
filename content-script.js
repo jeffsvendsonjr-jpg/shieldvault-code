@@ -155,12 +155,28 @@ function setUpgradeModalQuietForDismissal() {
   upgradeModalQuietUntil = Date.now() + UPGRADE_MODAL_DISMISS_QUIET_MS;
 }
 
-function showBehavioralUpgradeModal() {
+function showBehavioralUpgradeModal(lastWarning) {
   if (document.getElementById("shieldvault-upgrade-modal")) return;
   if (isUpgradeModalQuiet()) return;
 
   // Lock further auto-shows for 5 min the moment we display this one
   setUpgradeModalQuietForAutoShow();
+
+  // Personalize the headline based on what was just caught
+  const UPGRADE_COPY = {
+    "Late Night Message":        { headline: "Sending late-night messages again?", sub: "That was warning 10 of 10 this week. Future You thanks you for pausing." },
+    "Shouting (all-caps)":       { headline: "Caps lock doesn't make the point land harder.", sub: "That was your last free warning this week. Upgrade to stay protected." },
+    "Aggressive Punctuation":    { headline: "Three exclamation points is still yelling.", sub: "That was warning 10 of 10 this week. Unlock unlimited to keep the safety net." },
+    "Passive Aggressive":        { headline: "\"Per my last email\" is rarely received well.", sub: "That was your last free warning this week. Keep the guardrails with unlimited access." },
+    "Hostile Opener":            { headline: "Starting with a swing rarely ends well.", sub: "That was warning 10 of 10 this week. Upgrade to keep full coverage." },
+    "Rage-quit Threat":          { headline: "\"I quit\" hits differently in writing.", sub: "That was your last free warning this week. Don't lose your safety net." },
+    "Profanity / Insult":        { headline: "Name-calling almost never helps.", sub: "That was warning 10 of 10 this week. Upgrade to stay fully protected." },
+    "Emotional Overshare":       { headline: "Work venting online can follow you.", sub: "That was your last free warning this week. Upgrade to keep the guardrails on." },
+    "Gossip / Badmouthing":      { headline: "If it starts with \"don't tell anyone\"…", sub: "That was warning 10 of 10 this week. Unlock unlimited to stay covered." },
+  };
+  const copy = (lastWarning && UPGRADE_COPY[lastWarning])
+    ? UPGRADE_COPY[lastWarning]
+    : { headline: "You've used all 10 free behavioral warnings this week.", sub: "Resets Sunday. Or unlock unlimited now." };
 
   const modal = document.createElement("div");
   modal.id = "shieldvault-upgrade-modal";
@@ -187,16 +203,14 @@ function showBehavioralUpgradeModal() {
 
   modal.innerHTML = `
     <div style="font-size:26px;margin-bottom:10px">🛡️</div>
-    <div style="font-size:17px;font-weight:700;margin-bottom:6px;color:#1a1a2e">You've used all 10 free behavioral warnings this week.</div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:14px">Resets Sunday. Or unlock unlimited now.</div>
-    <div style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:12px">
-      $4.99<span style="font-size:10px">/month</span> &nbsp;·&nbsp; or $39 once — never think about it again.
-    </div>
-    <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="display:block;background:#1a1a2e;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;margin-bottom:8px;text-align:center">
-      Get Lifetime — $39
+    <div style="font-size:17px;font-weight:700;margin-bottom:6px;color:#1a1a2e">${escapeForHtml(copy.headline)}</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:14px">${escapeForHtml(copy.sub)}</div>
+    <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="display:block;background:#1a1a2e;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:6px;text-align:center;position:relative">
+      Lifetime — $39 &nbsp;<span style="font-size:10px;font-weight:500;opacity:0.75">one-time · never renews</span>
     </a>
-    <a href="https://shieldvault.site/api/checkout/quick?plan=monthly" target="_blank" style="display:block;background:transparent;color:#1a1a2e;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:500;font-size:14px;border:1.5px solid #d1d5db;margin-bottom:12px;text-align:center">
-      Start Monthly — $4.99/mo
+    <div style="font-size:11px;color:#9ca3af;margin-bottom:10px">Most popular · never think about it again</div>
+    <a href="https://shieldvault.site/api/checkout/quick?plan=monthly" target="_blank" style="display:block;background:transparent;color:#6b7280;text-decoration:none;padding:9px 20px;border-radius:8px;font-weight:500;font-size:12px;border:1px solid #e5e7eb;margin-bottom:12px;text-align:center">
+      Monthly instead — $4.99/mo
     </a>
     <button id="sv-upgrade-dismiss" style="background:transparent;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px;display:block;width:100%;text-align:center">
       Dismiss — message will send
@@ -828,9 +842,16 @@ function showBehavioralModal(text, el, warnings) {
   ].join(";");
 
   const remaining = behavioralQuotaRemaining();
-  const quotaLine = IS_PRO
-    ? ""
-    : `<div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:12px">${remaining} free behavioral warnings remaining this week</div>`;
+  let quotaLine = "";
+  if (!IS_PRO) {
+    if (remaining <= 0) {
+      quotaLine = `<div style="font-size:11px;color:#dc2626;text-align:center;margin-top:12px;font-weight:600">Quota used — resets Sunday or <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#1a1a2e;font-weight:700">unlock unlimited</a></div>`;
+    } else if (remaining <= 3) {
+      quotaLine = `<div style="font-size:11px;color:#b45309;text-align:center;margin-top:12px"><strong>${remaining}</strong> free behavioral warning${remaining === 1 ? "" : "s"} left this week — <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#1a1a2e;font-weight:700">upgrade before you run out</a></div>`;
+    } else {
+      quotaLine = `<div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:12px">${remaining} of 10 free behavioral warnings remaining this week</div>`;
+    }
+  }
 
   modal.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -996,7 +1017,8 @@ function handleDetection(text, el, vector, event) {
           event.stopImmediatePropagation();
         }
         if (el) setCooldown(el);
-        showBehavioralUpgradeModal();
+        const topMatch = behaviorMatches.find(m => m.severity === "high") || behaviorMatches[0];
+        showBehavioralUpgradeModal(topMatch ? topMatch.name : null);
         return true;
       }
       // else: quiet period active — fall through to behavioral modal below
