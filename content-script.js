@@ -515,7 +515,7 @@ function getPlatformContext() {
   if (host.includes("mail.google") || host.includes("outlook")) return "email";
   if (host.includes("linkedin")) return "professional";
   if (host.includes("slack") || host.includes("teams")) return "work-chat";
-  if (host.includes("reddit") || host.includes("twitter") || host.includes("x.com")) return "social";
+  if (host.includes("reddit") || host.includes("twitter") || host === "x.com" || host.endsWith(".x.com")) return "social";
   if (host.includes("chatgpt") || host.includes("claude") || host.includes("gemini") || host.includes("perplexity")) return "ai-chat";
   return "general";
 }
