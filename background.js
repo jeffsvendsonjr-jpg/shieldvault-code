@@ -1,77 +1,128 @@
-// Service worker for userp.ly extension
-// Review-hardened: no analytics or install/update event tracking.
+// ======================================================
+// ShieldVault — Background Service Worker
+// Persistent Proofs of Prevention
+// No secrets stored — only metadata (domain, time, type)
+// ======================================================
 
-const SUPABASE_URL = 'https://nihquqccvnfuaqsxyymj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paHF1cWNjdm5mdWFxc3h5eW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjQ1ODIsImV4cCI6MjA5NDY0MDU4Mn0.Q0ea1N8iWDoy0KzbFvL4rFYg0liZevnC3AFUDiJY1yE';
-const VERIFY_URL = `${SUPABASE_URL}/functions/v1/verify-date`;
-const SHIELDVAULT_DEFAULT_SETTINGS = {
-  secretGuard: true,
-  tokenGuard: true,
-  passwordGuard: true,
-  recoveryPhraseGuard: true,
-  privateInfoGuard: true,
-  clientDataGuard: true,
-  largePasteGuard: true,
-  reputationGuard: false,
-  lateNightPostAlert: false,
-  emotionalPostWarning: false,
+// ================================
+// IN-MEMORY STATE
+// ================================
+let proofs = [];
+let stats = {
+  totalSecretsBlocked: 0,
+  totalBehavioralWarnings: 0,
+  firstInstalled: null
 };
+let storageLoaded = false;
+let pendingMessages = [];
 
-async function ensureShieldVaultDefaults() {
-  try {
-    const current = await chrome.storage.local.get(['onboardingComplete', 'shieldvaultSettings']);
-    const mergedSettings = {
-      ...SHIELDVAULT_DEFAULT_SETTINGS,
-      ...(current && current.shieldvaultSettings ? current.shieldvaultSettings : {}),
-    };
-    const payload = { shieldvaultSettings: mergedSettings };
-    if (typeof current.onboardingComplete !== 'boolean') payload.onboardingComplete = false;
-    await chrome.storage.local.set(payload);
-  } catch (_) {
-    // Ignore storage failures in service worker.
-  }
+// ================================
+// PERSISTENCE (chrome.storage.local)
+// ================================
+function loadFromStorage() {
+  chrome.storage.local.get(["shieldvault_proofs", "shieldvault_stats"], (result) => {
+    if (result.shieldvault_proofs && Array.isArray(result.shieldvault_proofs)) {
+      proofs = result.shieldvault_proofs;
+    }
+    if (result.shieldvault_stats) {
+      stats = { ...stats, ...result.shieldvault_stats };
+    }
+    if (!stats.firstInstalled) {
+      stats.firstInstalled = Date.now();
+      saveStats();
+    }
+
+    storageLoaded = true;
+
+    for (const queued of pendingMessages) {
+      processPreventedMessage(queued.msg, queued.sender);
+    }
+    pendingMessages = [];
+  });
 }
 
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    ensureShieldVaultDefaults().finally(() => {
-      chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
-    });
+function saveProofs() {
+  chrome.storage.local.set({ shieldvault_proofs: proofs });
+}
+
+function saveStats() {
+  chrome.storage.local.set({ shieldvault_stats: stats });
+}
+
+loadFromStorage();
+
+// ================================
+// EVENT PROCESSING
+// ================================
+function processPreventedMessage(msg, sender) {
+  const detectors = msg.detectors || ["Unknown"];
+  const category = msg.category || "secret";
+
+  const proof = {
+    id: crypto.randomUUID(),
+    time: Date.now(),
+    domain: "unknown",
+    detectors: detectors.map(d => typeof d === "object" ? d.name : d),
+    vector: msg.vector || "input",
+    category: category,
+    // v1.5 richer metadata for v2 prep — local only, no content stored
+    hourOfDay: typeof msg.hourOfDay === "number" ? msg.hourOfDay : new Date().getHours(),
+    dayOfWeek: typeof msg.dayOfWeek === "number" ? msg.dayOfWeek : new Date().getDay(),
+    inputLength: typeof msg.inputLength === "number" ? msg.inputLength : 0,
+    severity: msg.severity || null
+  };
+
+  if (sender?.tab?.url) {
+    try {
+      proof.domain = new URL(sender.tab.url).hostname;
+    } catch {}
+  } else if (sender?.url) {
+    try {
+      proof.domain = new URL(sender.url).hostname;
+    } catch {}
+  }
+
+  proofs.unshift(proof);
+  if (proofs.length > 200) proofs.length = 200;
+
+  if (category === "behavioral") {
+    stats.totalBehavioralWarnings++;
+  } else {
+    stats.totalSecretsBlocked++;
+  }
+
+  saveProofs();
+  saveStats();
+}
+
+// ================================
+// MESSAGE HANDLERS
+// ================================
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg?.type === "SHIELDVAULT_PREVENTED") {
+    if (!storageLoaded) {
+      pendingMessages.push({ msg, sender });
+    } else {
+      processPreventedMessage(msg, sender);
+    }
     return;
   }
-  ensureShieldVaultDefaults();
-});
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.type !== 'USERPLY_VERIFY_DATE') return false;
+  if (msg?.type === "GET_PROOFS") {
+    sendResponse({ proofs, stats });
+    return true;
+  }
 
-  (async () => {
-    try {
-      const res = await fetch(VERIFY_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          url: message.url,
-          claimed_date: message.claimedDate || undefined,
-          anonymous_id: message.anonymousId,
-        }),
-      });
+  if (msg?.type === "CLEAR_PROOFS") {
+    proofs.length = 0;
+    saveProofs();
+    sendResponse({ success: true });
+    return true;
+  }
 
-      if (!res.ok) {
-        sendResponse({ ok: false, status: res.status });
-        return;
-      }
-
-      const data = await res.json();
-      sendResponse({ ok: true, data });
-    } catch (error) {
-      sendResponse({ ok: false, error: String(error && error.message ? error.message : error) });
-    }
-  })();
-
-  return true;
+  if (msg?.type === "GET_STATS") {
+    sendResponse({ stats });
+    return true;
+  }
 });
