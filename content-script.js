@@ -46,12 +46,19 @@ function loadBehavioralQuota() {
       const thisWeek = currentWeekKey();
       if (storedWeek !== thisWeek) {
         // Week rolled over — reset
+        const oldUses = typeof result.shieldvault_behavioral_uses === "number"
+          ? result.shieldvault_behavioral_uses
+          : 0;
         BEHAVIORAL_USES = 0;
         BEHAVIORAL_WEEK_KEY = thisWeek;
         chrome.storage.local.set({
           shieldvault_behavioral_uses: 0,
           shieldvault_behavioral_week: thisWeek
         });
+        // Re-engage users who hit the cap last week
+        if (!IS_PRO && oldUses >= BEHAVIORAL_FREE_LIMIT) {
+          setTimeout(showWeeklyResetToast, 1500);
+        }
       } else {
         BEHAVIORAL_USES = typeof result.shieldvault_behavioral_uses === "number"
           ? result.shieldvault_behavioral_uses
@@ -60,6 +67,42 @@ function loadBehavioralQuota() {
       }
     }
   );
+}
+
+function showWeeklyResetToast() {
+  if (document.getElementById("shieldvault-reset-toast")) return;
+  const toast = document.createElement("div");
+  toast.id = "shieldvault-reset-toast";
+  toast.style.cssText = [
+    "position:fixed",
+    "bottom:24px",
+    "right:24px",
+    "background:#1a1a2e",
+    "color:#e6e8ee",
+    "border:1px solid rgba(255,255,255,0.12)",
+    "border-radius:10px",
+    "padding:12px 16px",
+    "font-family:system-ui,sans-serif",
+    "font-size:13px",
+    "line-height:1.5",
+    "z-index:2147483647",
+    "max-width:300px",
+    "box-shadow:0 6px 20px rgba(0,0,0,0.35)",
+    "display:flex",
+    "flex-direction:column",
+    "gap:8px",
+  ].join(";");
+  toast.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">🛡️</span>
+      <span style="font-weight:700;font-size:13px;color:#fff">Your 10 free warnings just reset</span>
+    </div>
+    <div style="font-size:12px;color:#9ca3af">Your weekly behavioral protection quota is back to 10. <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#4c6fff;font-weight:600;text-decoration:none">Upgrade for unlimited →</a></div>
+    <button id="sv-reset-dismiss" style="background:transparent;border:none;color:#6b7280;font-size:11px;cursor:pointer;padding:0;text-align:left">Dismiss</button>
+  `;
+  document.body.appendChild(toast);
+  toast.querySelector("#sv-reset-dismiss").addEventListener("click", () => toast.remove());
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 10000);
 }
 
 function incrementBehavioralUse() {
@@ -786,6 +829,49 @@ function showClipboardClearOffer(el) {
   }, 8000);
 }
 
+// Rate-limit so the secrets nudge shows at most once per 10 minutes
+let secretsNudgeQuietUntil = 0;
+
+function showSecretsUpgradeNudge(el) {
+  if (IS_PRO) return;
+  if (Date.now() < secretsNudgeQuietUntil) return;
+  if (document.getElementById("shieldvault-secrets-nudge")) return;
+  secretsNudgeQuietUntil = Date.now() + 10 * 60 * 1000;
+
+  const rect = el ? el.getBoundingClientRect() : null;
+  const nudge = document.createElement("div");
+  nudge.id = "shieldvault-secrets-nudge";
+  nudge.style.cssText = [
+    "position:fixed",
+    rect ? `left:${Math.min(rect.left, window.innerWidth - 320)}px` : "right:24px",
+    rect ? `top:${Math.max(rect.bottom + 8, 8)}px` : "bottom:24px",
+    "background:#1a1a2e",
+    "color:#e6e8ee",
+    "border:1px solid rgba(255,255,255,0.12)",
+    "border-radius:10px",
+    "padding:10px 14px",
+    "font-family:system-ui,sans-serif",
+    "font-size:12px",
+    "line-height:1.5",
+    "z-index:2147483647",
+    "max-width:300px",
+    "box-shadow:0 6px 20px rgba(0,0,0,0.35)",
+    "display:flex",
+    "flex-direction:column",
+    "gap:6px",
+  ].join(";");
+  nudge.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span style="font-weight:700;font-size:12px;color:#fff">🛡️ Secret blocked — always free</span>
+      <button id="sv-nudge-dismiss" style="background:transparent;border:none;color:#6b7280;font-size:14px;cursor:pointer;padding:0;line-height:1">×</button>
+    </div>
+    <div style="font-size:11px;color:#9ca3af">Behavioral AI (tone, language) is also available — <strong style="color:#e6e8ee">10 free/week</strong> or <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#4c6fff;font-weight:600;text-decoration:none">unlimited with Pro</a>.</div>
+  `;
+  document.body.appendChild(nudge);
+  nudge.querySelector("#sv-nudge-dismiss").addEventListener("click", () => nudge.remove());
+  setTimeout(() => { if (nudge.parentNode) nudge.remove(); }, 7000);
+}
+
 function showRepeatOffenderWarning(el, detectorName, count) {
   if (document.getElementById("shieldvault-repeat-warning")) return;
 
@@ -845,9 +931,11 @@ function showBehavioralModal(text, el, warnings) {
   let quotaLine = "";
   if (!IS_PRO) {
     if (remaining <= 0) {
-      quotaLine = `<div style="font-size:11px;color:#dc2626;text-align:center;margin-top:12px;font-weight:600">Quota used — resets Sunday or <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#1a1a2e;font-weight:700">unlock unlimited</a></div>`;
+      quotaLine = `<div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:10px 14px;margin-top:12px;text-align:center"><div style="font-size:12px;color:#dc2626;font-weight:700;margin-bottom:4px">Weekly quota used up</div><div style="font-size:11px;color:#6b7280;margin-bottom:8px">Resets Sunday — or never run out again.</div><a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="display:inline-block;background:#1a1a2e;color:#fff;text-decoration:none;padding:7px 16px;border-radius:6px;font-weight:700;font-size:12px">Unlock unlimited →</a></div>`;
     } else if (remaining <= 3) {
       quotaLine = `<div style="font-size:11px;color:#b45309;text-align:center;margin-top:12px"><strong>${remaining}</strong> free behavioral warning${remaining === 1 ? "" : "s"} left this week — <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#1a1a2e;font-weight:700">upgrade before you run out</a></div>`;
+    } else if (remaining === 5) {
+      quotaLine = `<div style="font-size:11px;color:#6b7280;text-align:center;margin-top:12px">Halfway through your free warnings this week. <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" style="color:#1a1a2e;font-weight:600">Upgrade for unlimited →</a></div>`;
     } else {
       quotaLine = `<div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:12px">${remaining} of 10 free behavioral warnings remaining this week</div>`;
     }
@@ -966,6 +1054,9 @@ function handleDetection(text, el, vector, event) {
     if (vector === "paste" && el) {
       showClipboardClearOffer(el);
     }
+
+    // Nudge free users toward behavioral protection after a secret block
+    showSecretsUpgradeNudge(el);
 
     devWarn(`Blocked: ${secretMatches.join(", ")} via ${vector}`);
     return true;
