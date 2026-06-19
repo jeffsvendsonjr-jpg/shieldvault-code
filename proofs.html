@@ -45,16 +45,30 @@
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card">
           <div class="stat-value" id="stat-secrets">0</div>
-          <div class="stat-label">Secrets Blocked</div>
+          <div class="stat-label">Secrets/Code Protected</div>
         </div>
         <div class="stat-card">
           <div class="stat-value" id="stat-behavioral">0</div>
-          <div class="stat-label">Messages Paused</div>
+          <div class="stat-label">Messages Cooled Down</div>
         </div>
         <div class="stat-card stat-card-wide">
           <div class="stat-value" id="stat-days">0</div>
           <div class="stat-label">Days Protected</div>
         </div>
+      </div>
+
+      <div class="since-install-summary" id="since-install-summary">
+        <div class="since-install-title">Since install</div>
+        <ul class="since-install-list">
+          <li><span class="since-install-number" id="summary-events">0</span> protection events</li>
+          <li><span class="since-install-number" id="summary-sensitive">0</span> secrets/code blocks protected</li>
+          <li><span class="since-install-number" id="summary-cooled">0</span> messages cooled down</li>
+          <li><span class="since-install-number" id="summary-paused-sites">0</span> sites paused by you</li>
+        </ul>
+        <p class="since-install-empty" id="summary-empty-message">
+          Once ShieldVault protects something, this area will show your local protection summary.
+        </p>
+        <p class="since-install-paywall" id="summary-paywall-copy"></p>
       </div>
 
       <div class="section-header">

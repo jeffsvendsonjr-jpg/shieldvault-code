@@ -48,6 +48,12 @@ const exportBtn = document.getElementById("export-btn");
 const statSecrets = document.getElementById("stat-secrets");
 const statBehavioral = document.getElementById("stat-behavioral");
 const statDays = document.getElementById("stat-days");
+const summaryEvents = document.getElementById("summary-events");
+const summarySensitive = document.getElementById("summary-sensitive");
+const summaryCooled = document.getElementById("summary-cooled");
+const summaryPausedSites = document.getElementById("summary-paused-sites");
+const summaryEmptyMessage = document.getElementById("summary-empty-message");
+const summaryPaywallCopy = document.getElementById("summary-paywall-copy");
 
 const proSection = document.getElementById("pro-section");
 const proActive = document.getElementById("pro-active");
@@ -64,6 +70,9 @@ const btnResetPro = document.getElementById("btn-reset-pro");
 
 const quotaStatus = document.getElementById("sv-quota-status");
 const firstRunDemo = document.getElementById("first-run-demo");
+const PROTECTION_EVENT_CATEGORIES = new Set(["secret", "confidential", "codeblock", "behavioral"]);
+const SENSITIVE_OR_CODE_CATEGORIES = new Set(["secret", "confidential", "codeblock"]);
+let isProUser = false;
 
 // ================================
 // TAB SWITCHING
@@ -211,6 +220,49 @@ function daysSince(timestamp) {
   return Math.max(1, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
 
+function normalizeCategory(proof) {
+  if (!proof || typeof proof.category !== "string") return "secret";
+  return proof.category.toLowerCase().trim();
+}
+
+function computeProtectionSummary(proofs, pausedSitesCount) {
+  const safeProofs = Array.isArray(proofs) ? proofs : [];
+  const protectionEvents = safeProofs.filter((proof) => PROTECTION_EVENT_CATEGORIES.has(normalizeCategory(proof)));
+  const sensitiveProtected = protectionEvents.filter((proof) => SENSITIVE_OR_CODE_CATEGORIES.has(normalizeCategory(proof)));
+  const messagesCooledDown = protectionEvents.filter((proof) => normalizeCategory(proof) === "behavioral");
+
+  return {
+    protectionEvents: protectionEvents.length,
+    sensitiveProtected: sensitiveProtected.length,
+    messagesCooledDown: messagesCooledDown.length,
+    pausedSites: pausedSitesCount,
+  };
+}
+
+function renderSinceInstallSummary(summary) {
+  if (!summary || !summaryEvents || !summarySensitive || !summaryCooled || !summaryPausedSites || !summaryEmptyMessage || !summaryPaywallCopy) return;
+  summaryEvents.textContent = summary.protectionEvents;
+  summarySensitive.textContent = summary.sensitiveProtected;
+  summaryCooled.textContent = summary.messagesCooledDown;
+  summaryPausedSites.textContent = summary.pausedSites;
+
+  if (summary.protectionEvents > 0) {
+    summaryEmptyMessage.style.display = "none";
+    if (!isProUser) {
+      summaryPaywallCopy.textContent = `You've had ${summary.protectionEvents} protection events. Pro keeps full local receipts and export history.`;
+      summaryPaywallCopy.style.display = "block";
+    } else {
+      summaryPaywallCopy.style.display = "none";
+      summaryPaywallCopy.textContent = "";
+    }
+    return;
+  }
+
+  summaryEmptyMessage.style.display = "block";
+  summaryPaywallCopy.style.display = "none";
+  summaryPaywallCopy.textContent = "";
+}
+
 // ================================
 // STATS RENDERING
 // ================================
@@ -275,8 +327,16 @@ function loadProofs() {
       console.error("Failed to get proofs:", chrome.runtime.lastError);
       return;
     }
-    renderProofs(response?.proofs || []);
-    renderStats(response?.stats || {});
+    const proofs = response?.proofs || [];
+    const stats = response?.stats || {};
+    chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+      const pausedDomains = Array.isArray(result.shieldvault_paused_domains)
+        ? result.shieldvault_paused_domains
+        : [];
+      renderProofs(proofs);
+      renderStats(stats);
+      renderSinceInstallSummary(computeProtectionSummary(proofs, pausedDomains.length));
+    });
   });
 }
 
@@ -295,8 +355,8 @@ function exportStats() {
     report += `Generated: ${formatDate(Date.now())}\n`;
     report += `Protected since: ${stats.firstInstalled ? formatDate(stats.firstInstalled) : "Unknown"}\n`;
     report += `Days protected: ${daysSince(stats.firstInstalled)}\n\n`;
-    report += `Total secrets blocked: ${stats.totalSecretsBlocked || 0}\n`;
-    report += `Total messages paused: ${stats.totalBehavioralWarnings || 0}\n\n`;
+    report += `Total secrets/code protected: ${stats.totalSecretsBlocked || 0}\n`;
+    report += `Total messages cooled down: ${stats.totalBehavioralWarnings || 0}\n\n`;
     report += "Recent Activity\n";
     report += "---------------\n";
 
@@ -374,6 +434,7 @@ function loadProStatus() {
     ["shieldvault_pro", "shieldvault_license_key", "shieldvault_behavioral_uses"],
     (result) => {
       const quotaBadge = document.getElementById("sv-behavioral-quota-badge");
+      isProUser = result.shieldvault_pro === true && !!result.shieldvault_license_key;
       if (result.shieldvault_pro === true && result.shieldvault_license_key) {
         verifyStoredLicense(result.shieldvault_license_key);
         if (quotaBadge) {
@@ -411,6 +472,7 @@ function loadProStatus() {
         }
         showView("upgrade");
       }
+      loadProofs();
     }
   );
 }
@@ -424,11 +486,13 @@ function verifyStoredLicense(key) {
     .then(res => res.json())
     .then(data => {
       if (data.valid) {
+        isProUser = true;
         chrome.storage.local.set({ shieldvault_tier: "plus" });
         showView("active");
       } else {
         // Server says invalid. Downgrade Pro flag but KEEP the key cached
         // so the user can retry without having to re-enter from email.
+        isProUser = false;
         chrome.storage.local.set({ shieldvault_pro: false });
         showView("upgrade");
       }
@@ -437,6 +501,7 @@ function verifyStoredLicense(key) {
       // Network failure — keep last known Pro state (offline-tolerant).
       // TODO v1.5.1: implement grace-period expiry to prevent indefinite
       // free Pro by hosts-blocking the verify endpoint.
+      isProUser = true;
       showView("active");
     });
 }
@@ -454,6 +519,7 @@ function activateLicense(key) {
     .then(res => res.json())
     .then(data => {
       if (data.valid) {
+        isProUser = true;
         chrome.storage.local.set({
           shieldvault_pro: true,
           shieldvault_license_key: key,
@@ -462,11 +528,13 @@ function activateLicense(key) {
           showView("active");
         });
       } else {
+        isProUser = false;
         licenseError.textContent = "Invalid or expired license key.";
         licenseError.style.display = "block";
       }
     })
     .catch(() => {
+      isProUser = false;
       licenseError.textContent = "Could not verify. Check your connection.";
       licenseError.style.display = "block";
     })
@@ -656,7 +724,9 @@ licenseKeyInput.addEventListener("keydown", (e) => {
 btnResetPro.addEventListener("click", () => {
   if (confirm("Deactivate your Pro status?")) {
     chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key", "shieldvault_tier"], () => {
+      isProUser = false;
       showView("upgrade");
+      loadProofs();
     });
   }
 });
@@ -664,7 +734,6 @@ btnResetPro.addEventListener("click", () => {
 // ================================
 // INIT
 // ================================
-loadProofs();
 loadProStatus();
 loadSettingsUI();
 setupFirstRunDemo();
@@ -674,8 +743,11 @@ loadPausedSites();
 // Live-update popup when proofs or stats change (replaces polling)
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.shieldvault_proofs || changes.shieldvault_stats) {
+  if (changes.shieldvault_proofs || changes.shieldvault_stats || changes.shieldvault_paused_domains) {
     loadProofs();
+  }
+  if (changes.shieldvault_pro || changes.shieldvault_license_key || changes.shieldvault_tier) {
+    loadProStatus();
   }
   if (changes.shieldvault_paused_domains) {
     renderPausedSites(changes.shieldvault_paused_domains.newValue || []);
