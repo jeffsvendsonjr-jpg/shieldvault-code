@@ -23,6 +23,10 @@ const DEV = false;
 // TIER + WEEKLY BEHAVIORAL QUOTA
 // ================================
 let IS_PRO = false;
+// Set to true only after loadBehavioralQuota() resolves from storage.
+// All free-user gates must check this first so a stale IS_PRO=false default
+// never incorrectly triggers quota burns or upgrade modals for Pro users.
+let ENTITLEMENT_LOADED = false;
 let BEHAVIORAL_USES = 0;
 let BEHAVIORAL_WEEK_KEY = "";
 const BEHAVIORAL_FREE_LIMIT = 10;
@@ -65,6 +69,7 @@ function loadBehavioralQuota() {
           : 0;
         BEHAVIORAL_WEEK_KEY = storedWeek;
       }
+      ENTITLEMENT_LOADED = true;
     }
   );
 }
@@ -106,6 +111,7 @@ function showWeeklyResetToast() {
 }
 
 function incrementBehavioralUse() {
+  if (!ENTITLEMENT_LOADED || IS_PRO) return;
   BEHAVIORAL_USES++;
   chrome.storage.local.set({
     shieldvault_behavioral_uses: BEHAVIORAL_USES,
@@ -114,7 +120,7 @@ function incrementBehavioralUse() {
 }
 
 function behavioralQuotaRemaining() {
-  if (IS_PRO) return Infinity;
+  if (!ENTITLEMENT_LOADED || IS_PRO) return Infinity;
   return Math.max(0, BEHAVIORAL_FREE_LIMIT - BEHAVIORAL_USES);
 }
 
@@ -863,7 +869,7 @@ function showClipboardClearOffer(el) {
 let secretsNudgeQuietUntil = 0;
 
 function showSecretsUpgradeNudge(el) {
-  if (IS_PRO) return;
+  if (!ENTITLEMENT_LOADED || IS_PRO) return;
   if (Date.now() < secretsNudgeQuietUntil) return;
   if (document.getElementById("shieldvault-secrets-nudge")) return;
   secretsNudgeQuietUntil = Date.now() + 10 * 60 * 1000;
@@ -1191,7 +1197,7 @@ function handleDetection(text, el, vector, event) {
   // --- Behavioral: free up to BEHAVIORAL_FREE_LIMIT/week, unlimited Pro ---
   const behaviorMatches = detectBehaviors(text);
   if (behaviorMatches.length > 0) {
-    if (!IS_PRO && BEHAVIORAL_USES >= BEHAVIORAL_FREE_LIMIT) {
+    if (ENTITLEMENT_LOADED && !IS_PRO && BEHAVIORAL_USES >= BEHAVIORAL_FREE_LIMIT) {
       // User is over the weekly limit.
       // If upgrade modal is in quiet period (just shown / explicitly dismissed),
       // fall through to a normal behavioral catch instead of nagging again.
@@ -1325,7 +1331,7 @@ document.addEventListener(
 
       const behaviorMatches = detectBehaviors(value);
       if (behaviorMatches.length > 0) {
-        if (!IS_PRO && BEHAVIORAL_USES >= BEHAVIORAL_FREE_LIMIT) {
+        if (ENTITLEMENT_LOADED && !IS_PRO && BEHAVIORAL_USES >= BEHAVIORAL_FREE_LIMIT) {
           // Same logic as main handler: respect upgrade modal quiet period.
           // If user just dismissed the upgrade modal, fall through to the
           // regular behavioral modal instead of nagging again.
