@@ -154,6 +154,33 @@ function loadSettings() {
 loadSettings();
 loadBehavioralQuota();
 
+// ================================
+// PAUSED DOMAINS (per-domain silence)
+// ================================
+let PAUSED_DOMAINS = new Set();
+
+function currentHostname() {
+  try { return window.location.hostname; } catch (e) { return ""; }
+}
+
+function loadPausedDomains() {
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+  chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+    if (Array.isArray(result.shieldvault_paused_domains)) {
+      PAUSED_DOMAINS = new Set(result.shieldvault_paused_domains);
+    }
+  });
+}
+
+function pauseCurrentDomain() {
+  const host = currentHostname();
+  if (!host) return;
+  PAUSED_DOMAINS.add(host);
+  chrome.storage.local.set({ shieldvault_paused_domains: [...PAUSED_DOMAINS] });
+}
+
+loadPausedDomains();
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.shieldvault_settings) {
@@ -167,6 +194,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (changes.shieldvault_behavioral_week) {
     BEHAVIORAL_WEEK_KEY = changes.shieldvault_behavioral_week.newValue || "";
+  }
+  if (changes.shieldvault_paused_domains) {
+    PAUSED_DOMAINS = new Set(changes.shieldvault_paused_domains.newValue || []);
   }
 });
 
@@ -872,6 +902,52 @@ function showSecretsUpgradeNudge(el) {
   setTimeout(() => { if (nudge.parentNode) nudge.remove(); }, 7000);
 }
 
+function showUndoSendToast(el) {
+  if (document.getElementById("shieldvault-undo-toast")) return;
+  const toast = document.createElement("div");
+  toast.id = "shieldvault-undo-toast";
+  toast.style.cssText = [
+    "position:fixed",
+    "bottom:24px",
+    "left:50%",
+    "transform:translateX(-50%)",
+    "background:#1a1a2e",
+    "color:#e6e8ee",
+    "border:1px solid rgba(255,255,255,0.12)",
+    "border-radius:10px",
+    "padding:10px 16px",
+    "font-family:system-ui,sans-serif",
+    "font-size:13px",
+    "line-height:1.5",
+    "z-index:2147483647",
+    "display:flex",
+    "align-items:center",
+    "gap:12px",
+    "box-shadow:0 6px 20px rgba(0,0,0,0.35)",
+    "white-space:nowrap",
+  ].join(";");
+  toast.innerHTML = `
+    <span style="color:#9ca3af">Changed your mind?</span>
+    <button id="sv-undo-send" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:12px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:6px">Send anyway →</button>
+    <button id="sv-undo-dismiss" style="background:transparent;border:none;color:#6b7280;font-size:16px;cursor:pointer;padding:0;line-height:1">×</button>
+  `;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
+  toast.querySelector("#sv-undo-send").addEventListener("click", () => {
+    clearTimeout(timer);
+    toast.remove();
+    if (el) {
+      el.removeAttribute("readonly");
+      el.dataset.shieldvaultBypass = "true";
+      el.focus();
+    }
+  });
+  toast.querySelector("#sv-undo-dismiss").addEventListener("click", () => {
+    clearTimeout(timer);
+    toast.remove();
+  });
+}
+
 function showRepeatOffenderWarning(el, detectorName, count) {
   if (document.getElementById("shieldvault-repeat-warning")) return;
 
@@ -958,6 +1034,9 @@ function showBehavioralModal(text, el, warnings) {
       <button id="sv-edit-btn" style="padding:8px 18px;border-radius:7px;border:none;background:#1a1a2e;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Edit Message</button>
     </div>
     ${quotaLine}
+    <div style="text-align:center;margin-top:10px">
+      <button id="sv-pause-domain" style="background:transparent;border:none;color:#9ca3af;font-size:11px;cursor:pointer;padding:2px;text-decoration:underline;text-underline-offset:2px">Pause ShieldVault on ${escapeForHtml(currentHostname())}</button>
+    </div>
   `;
 
   document.body.appendChild(modal);
@@ -1011,7 +1090,17 @@ function showBehavioralModal(text, el, warnings) {
       setCooldown(el);
     }
     modal.remove();
+    showUndoSendToast(el);
   });
+
+  const pauseBtn = modal.querySelector("#sv-pause-domain");
+  if (pauseBtn) {
+    pauseBtn.addEventListener("click", () => {
+      pauseCurrentDomain();
+      if (el) el.removeAttribute("readonly");
+      modal.remove();
+    });
+  }
 }
 
 function escapeForHtml(str) {
@@ -1027,6 +1116,9 @@ function escapeForHtml(str) {
 //   - Behavioral: paywall fires only when free quota exhausted
 // ================================
 function handleDetection(text, el, vector, event) {
+  // --- Per-domain silence check ---
+  if (PAUSED_DOMAINS.has(currentHostname())) return false;
+
   // --- Secrets: ALWAYS FREE, ALWAYS BLOCK ---
   const secretMatches = detectSecrets(text);
   if (secretMatches.length > 0) {
@@ -1055,8 +1147,10 @@ function handleDetection(text, el, vector, event) {
       showClipboardClearOffer(el);
     }
 
-    // Nudge free users toward behavioral protection after a secret block
-    showSecretsUpgradeNudge(el);
+    // Introduce behavioral protection to users who haven't encountered it yet
+    if (BEHAVIORAL_USES === 0) {
+      showSecretsUpgradeNudge(el);
+    }
 
     devWarn(`Blocked: ${secretMatches.join(", ")} via ${vector}`);
     return true;
@@ -1195,6 +1289,7 @@ document.addEventListener(
     inputDebounceTimer = setTimeout(() => {
       const targetEl = lastDebouncedEl;
       if (!targetEl) return;
+      if (PAUSED_DOMAINS.has(currentHostname())) return;
       const value = getValue(targetEl);
       if (!value) return;
 

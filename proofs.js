@@ -318,6 +318,40 @@ function exportStats() {
   });
 }
 
+function exportStatsJSON() {
+  chrome.runtime.sendMessage({ type: "GET_PROOFS" }, (response) => {
+    if (chrome.runtime.lastError) return;
+
+    const stats = response?.stats || {};
+    const proofs = response?.proofs || [];
+
+    const data = {
+      generated: new Date().toISOString(),
+      stats: {
+        totalSecretsBlocked: stats.totalSecretsBlocked || 0,
+        totalBehavioralWarnings: stats.totalBehavioralWarnings || 0,
+        daysProtected: daysSince(stats.firstInstalled),
+        firstInstalled: stats.firstInstalled ? new Date(stats.firstInstalled).toISOString() : null,
+      },
+      activity: proofs.slice(0, 200).map(p => ({
+        time: new Date(p.time).toISOString(),
+        domain: p.domain,
+        detectors: p.detectors,
+        vector: p.vector,
+        category: p.category || "secret",
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shieldvault-report-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
 // ================================
 // PRO STATUS MANAGEMENT
 // ================================
@@ -523,6 +557,41 @@ function setupFirstRunDemo() {
 }
 
 // ================================
+// PAUSED SITES MANAGEMENT
+// ================================
+function loadPausedSites() {
+  chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+    renderPausedSites(result.shieldvault_paused_domains || []);
+  });
+}
+
+function renderPausedSites(domains) {
+  const listEl = document.getElementById("paused-sites-list");
+  if (!listEl) return;
+  if (!domains || domains.length === 0) {
+    listEl.innerHTML = '<p style="font-size:12px;color:#6b7280;margin:8px 0 0">No sites paused. Use "Pause on this site" in a warning to silence ShieldVault on a domain.</p>';
+    return;
+  }
+  listEl.innerHTML = domains.map(d => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <span style="font-size:12px;color:#e6e8ee">${escapeHtml(d)}</span>
+      <button class="paused-site-remove" data-domain="${escapeHtml(d)}" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9ca3af;font-size:11px;cursor:pointer;padding:3px 8px;border-radius:4px">Re-enable</button>
+    </div>
+  `).join("");
+  listEl.querySelectorAll(".paused-site-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const domain = btn.dataset.domain;
+      chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+        const updated = (result.shieldvault_paused_domains || []).filter(d => d !== domain);
+        chrome.storage.local.set({ shieldvault_paused_domains: updated }, () => {
+          renderPausedSites(updated);
+        });
+      });
+    });
+  });
+}
+
+// ================================
 // EVENT HANDLERS
 // ================================
 
@@ -537,6 +606,13 @@ clearBtn.addEventListener("click", () => {
 exportBtn.addEventListener("click", () => {
   exportStats();
 });
+
+const exportJsonBtn = document.getElementById("export-json-btn");
+if (exportJsonBtn) {
+  exportJsonBtn.addEventListener("click", () => {
+    exportStatsJSON();
+  });
+}
 
 if (btnMonthly) {
   btnMonthly.addEventListener("click", () => {
@@ -593,5 +669,15 @@ loadProStatus();
 loadSettingsUI();
 setupFirstRunDemo();
 loadCalloutState();
+loadPausedSites();
 
-setInterval(loadProofs, 5000);
+// Live-update popup when proofs or stats change (replaces polling)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.shieldvault_proofs || changes.shieldvault_stats) {
+    loadProofs();
+  }
+  if (changes.shieldvault_paused_domains) {
+    renderPausedSites(changes.shieldvault_paused_domains.newValue || []);
+  }
+});

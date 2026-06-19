@@ -60,6 +60,7 @@
       <div class="section-header">
         <span class="section-title">Recent Activity</span>
         <div class="section-actions">
+          <button class="clear-btn" id="export-json-btn">Export JSON</button>
           <button class="clear-btn" id="export-btn">Export</button>
           <button class="clear-btn" id="clear-btn">Clear</button>
         </div>
@@ -170,6 +171,13 @@
           <input type="checkbox" class="toggle-input" data-setting="soundOnBlock">
           <span class="toggle-switch"></span>
         </label>
+      </div>
+
+      <div class="settings-group" id="paused-sites-group">
+        <div class="settings-group-title">Paused Sites</div>
+        <div id="paused-sites-list">
+          <p style="font-size:12px;color:#6b7280;margin:8px 0 0">No sites paused. Use "Pause on this site" in a warning to silence ShieldVault on a domain.</p>
+        </div>
       </div>
     </div>
 
