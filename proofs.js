@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS = {
   piiDetectionCreditCard: true,
   piiDetectionPhone: false,
   piiDetectionAddress: false,
-  lateNightGuard: true,
+  lateNightGuard: false,
   repeatOffenderWarnings: true,
   clipboardClear: true,
   soundOnBlock: false,
