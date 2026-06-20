@@ -206,7 +206,7 @@
   });
 
   document.getElementById('btn-monthly').addEventListener('click', function () {
-    startCheckout('monthly', this, '$5.99/mo');
+    startCheckout('monthly', this, '$4.99/mo');
   });
 
   // ── License key flow ─────────────────────────────────────────────────────────
