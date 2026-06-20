@@ -116,6 +116,24 @@
 
   applyProState();
 
+  // ── Behavioral upgrade nudge ─────────────────────────────────────────────────
+  // After 5+ preventions, pulse the Pro section to catch the user at peak value.
+
+  try {
+    chrome.storage.local.get(['shieldvault_behavioral_uses'], function (result) {
+      if (chrome.runtime.lastError) return;
+      const uses = result.shieldvault_behavioral_uses || 0;
+      const pro = getProStatus();
+      if (uses >= 5 && !(pro && pro.active)) {
+        const proSection = document.getElementById('pro-section');
+        if (proSection && proSection.style.display !== 'none') {
+          proSection.classList.add('pro-section--nudge');
+          proSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    });
+  } catch (_) {}
+
   // ── Stripe publishable key — lazy + cached ───────────────────────────────────
 
   let _stripeKeyPromise = null;
@@ -155,15 +173,13 @@
 
   // ── Upgrade button ───────────────────────────────────────────────────────────
 
-  document.getElementById('btn-monthly').addEventListener('click', async function () {
-    const btn = this;
+  async function startCheckout(plan, btn, originalLabel) {
     btn.disabled = true;
     btn.textContent = 'Loading…';
     try {
-      // Ensure Stripe key is cached before hitting checkout
       await getStripePublishableKey();
 
-      const res = await fetch(API_BASE + '/api/checkout/quick?plan=monthly', {
+      const res = await fetch(API_BASE + '/api/checkout/quick?plan=' + plan, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -175,14 +191,22 @@
       } else {
         throw new Error('No checkout URL returned');
       }
-    } catch (err) {
+    } catch (_err) {
       btn.textContent = 'Error — try again';
       btn.disabled = false;
-      setTimeout(function () { btn.textContent = '$5.99/month'; btn.disabled = false; }, 3000);
+      setTimeout(function () { btn.textContent = originalLabel; btn.disabled = false; }, 3000);
       return;
     }
-    btn.textContent = '$5.99/month';
+    btn.textContent = originalLabel;
     btn.disabled = false;
+  }
+
+  document.getElementById('btn-annual').addEventListener('click', function () {
+    startCheckout('annual', this, '$49.99/year');
+  });
+
+  document.getElementById('btn-monthly').addEventListener('click', function () {
+    startCheckout('monthly', this, '$5.99/mo');
   });
 
   // ── License key flow ─────────────────────────────────────────────────────────

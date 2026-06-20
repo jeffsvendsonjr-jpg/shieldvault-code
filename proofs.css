@@ -236,6 +236,37 @@ button:disabled {
   border-color: var(--pro-gold);
 }
 
+.pro-btn-annual {
+  background: var(--pro-gold);
+  border: 1px solid var(--pro-gold);
+  color: #000;
+}
+
+.pro-btn-annual:hover {
+  background: var(--pro-gold-dim);
+  border-color: var(--pro-gold-dim);
+  color: #000;
+}
+
+.pro-savings {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+@keyframes nudge-glow {
+  0%, 100% { border-color: rgba(244, 183, 64, 0.2); box-shadow: none; }
+  50%       { border-color: rgba(244, 183, 64, 0.7); box-shadow: 0 0 10px rgba(244, 183, 64, 0.2); }
+}
+
+.pro-section--nudge {
+  animation: nudge-glow 1.8s ease-in-out 3;
+}
+
 .pro-purchased-link {
   display: block;
   width: 100%;
