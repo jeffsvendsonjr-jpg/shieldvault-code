@@ -17,6 +17,9 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   privateInfoGuard: true,
   clientDataGuard: true,
   largePasteGuard: true,
+  creditCardGuard: true,
+  phoneGuard: true,
+  bankAccountGuard: true,
   reputationGuard: false,
   lateNightPostAlert: false,
   emotionalPostWarning: false,
@@ -60,7 +63,7 @@ async function disableSubjectiveWarning(type) {
   if (type === "emotional") {
     updated.emotionalPostWarning = false;
   }
-  updated.reputationGuard = Boolean(updated.lateNightPostAlert || updated.emotionalPostWarning);
+  // reputationGuard is now independently controlled — don't touch it here
   SHIELDVAULT_SETTINGS = updated;
   try {
     await chrome.storage.local.set({ [SHIELDVAULT_SETTINGS_KEY]: updated });
@@ -157,7 +160,38 @@ const DETECTORS = [
   
   // Basic Auth
   { name: "Basic Auth Header", pattern: /Basic\s+[A-Za-z0-9+\/=]{20,}/ },
+
+  // Anthropic / Claude
+  { name: "Anthropic API Key", pattern: /sk-ant-api03-[A-Za-z0-9_-]{93}/ },
+
+  // HuggingFace
+  { name: "HuggingFace Token", pattern: /hf_[A-Za-z0-9]{34,}/ },
+
+  // Azure
+  { name: "Azure Storage Connection", pattern: /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+\/=]{44,}/ },
+
+  // Shopify
+  { name: "Shopify Admin Token", pattern: /shpat_[A-Za-z0-9]{32}/ },
+  { name: "Shopify Custom App Token", pattern: /shpca_[A-Za-z0-9]{32}/ },
+  { name: "Shopify Shared Secret", pattern: /shpss_[A-Za-z0-9]{32}/ },
+
+  // HashiCorp Vault
+  { name: "HashiCorp Vault Token", pattern: /hvs\.[A-Za-z0-9]{24,}/ },
 ];
+
+// ================================
+// HIGH-RISK PASTE DOMAINS (reputationGuard)
+// ================================
+const HIGH_RISK_PASTE_DOMAINS = [
+  'pastebin.com', 'hastebin.com', 'paste.ee', 'ghostbin.com',
+  'rentry.co', 'dpaste.com', 'pasteio.com', 'paste.ubuntu.com',
+];
+
+function isHighRiskDomain() {
+  if (!SHIELDVAULT_SETTINGS.reputationGuard) return false;
+  const hostname = window.location.hostname.replace(/^www\./, '');
+  return HIGH_RISK_PASTE_DOMAINS.includes(hostname);
+}
 
 // ================================
 // BEHAVIORAL PATTERN LIBRARY
@@ -265,6 +299,22 @@ function detectSecrets(text) {
   if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
     matches.push("Large sensitive paste");
   }
+
+  if (SHIELDVAULT_SETTINGS.creditCardGuard && /\b(?:4[0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}|5[1-5][0-9]{2}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}|3[47][0-9]{2}[\s\-]?[0-9]{6}[\s\-]?[0-9]{5}|6(?:011|5[0-9]{2})[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4})\b/.test(text)) {
+    matches.push("Credit card number");
+  }
+
+  if (SHIELDVAULT_SETTINGS.phoneGuard && /(?:\+?1[\s.\-]?)?(?:\([0-9]{3}\)|[0-9]{3})[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}/.test(text)) {
+    matches.push("Phone number");
+  }
+
+  if (SHIELDVAULT_SETTINGS.bankAccountGuard && (
+    /(?:routing|aba|transit)\s*(?:number|#|no\.?)?\s*:?\s*\b[0-9]{9}\b/i.test(text) ||
+    /account\s*(?:number|#|no\.?)?\s*:?\s*\b[0-9]{10,17}\b/i.test(text)
+  )) {
+    matches.push("Bank account info");
+  }
+
   return matches;
 }
 
@@ -273,7 +323,9 @@ function isDetectorEnabled(detectorName) {
   if (name.includes("token") || name.includes("pat")) {
     return SHIELDVAULT_SETTINGS.tokenGuard;
   }
+  // New AI/cloud/infra tokens also fall under secretGuard
   return SHIELDVAULT_SETTINGS.secretGuard;
+}
 }
 
 // ================================
@@ -496,6 +548,10 @@ function handleDetection(text, el, vector, event) {
     warnings.push("Late-night posting check");
     warningTypes.push("lateNight");
   }
+  if (isHighRiskDomain() && text.trim().length >= 10) {
+    warnings.push("Posting to a public paste site — content may be visible to anyone");
+    warningTypes.push("reputation");
+  }
 
   if (warnings.length > 0) {
     if (event && typeof event.preventDefault === "function") {
@@ -596,6 +652,41 @@ document.addEventListener(
     if (behaviorMatches.length > 0) {
       showBehavioralModal(value, el, behaviorMatches, ["emotional"]);
       devWarn(`Fallback behavioral warning: ${behaviorMatches.join(", ")}`);
+    }
+  },
+  true
+);
+
+// DROP — catch dragged .env / key / cert files before they land in an input
+document.addEventListener(
+  "drop",
+  (e) => {
+    if (!SHIELDVAULT_SETTINGS.secretGuard) return;
+
+    const el = e.target;
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && !el.isContentEditable)) return;
+
+    // Check for sensitive file names
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const sensitiveFile = Array.from(files).find(function (f) {
+        return /\.(env|pem|key|p12|pfx|jks|crt|cer|ppk)$/i.test(f.name) ||
+          /^(id_rsa|id_ed25519|id_ecdsa|id_dsa|\.env)$/.test(f.name);
+      });
+      if (sensitiveFile) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        liftAndFadeGhost(el, sensitiveFile.name);
+        notifyBackground(["Sensitive file: " + sensitiveFile.name], "drop");
+        devWarn(`Blocked file drop: ${sensitiveFile.name}`);
+        return;
+      }
+    }
+
+    // Also check plain-text content in the drag payload
+    const text = e.dataTransfer && e.dataTransfer.getData("text");
+    if (text) {
+      handleDetection(text, el, "drop", e);
     }
   },
   true

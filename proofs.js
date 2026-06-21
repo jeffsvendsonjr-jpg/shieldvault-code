@@ -264,4 +264,65 @@
     clearProStatus();
     applyProState();
   });
+
+  // ── Detection Settings ────────────────────────────────────────────────────────
+
+  const DETECT_SETTINGS_KEY = 'shieldvaultSettings';
+  const DETECT_DEFAULTS = {
+    secretGuard: true,
+    tokenGuard: true,
+    passwordGuard: true,
+    recoveryPhraseGuard: true,
+    privateInfoGuard: true,
+    clientDataGuard: true,
+    largePasteGuard: true,
+    creditCardGuard: true,
+    phoneGuard: true,
+    bankAccountGuard: true,
+    reputationGuard: false,
+    lateNightPostAlert: false,
+    emotionalPostWarning: false,
+  };
+
+  const DETECT_TOGGLE_KEYS = Object.keys(DETECT_DEFAULTS);
+
+  function loadAndRenderDetectSettings() {
+    try {
+      chrome.storage.local.get([DETECT_SETTINGS_KEY], function (result) {
+        if (chrome.runtime.lastError) return;
+        const settings = Object.assign({}, DETECT_DEFAULTS, result[DETECT_SETTINGS_KEY] || {});
+        for (const key of DETECT_TOGGLE_KEYS) {
+          const el = document.getElementById('set-' + key);
+          if (el) el.checked = Boolean(settings[key]);
+        }
+      });
+    } catch (_) {}
+  }
+
+  function saveDetectSettings() {
+    try {
+      const settings = {};
+      for (const key of DETECT_TOGGLE_KEYS) {
+        const el = document.getElementById('set-' + key);
+        settings[key] = el ? el.checked : DETECT_DEFAULTS[key];
+      }
+      chrome.storage.local.set({ [DETECT_SETTINGS_KEY]: settings });
+    } catch (_) {}
+  }
+
+  document.getElementById('settings-header-btn').addEventListener('click', function () {
+    const body = document.getElementById('settings-body');
+    const chevron = document.getElementById('settings-chevron');
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : '';
+    chevron.classList.toggle('open', !isOpen);
+    this.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  for (const key of DETECT_TOGGLE_KEYS) {
+    const el = document.getElementById('set-' + key);
+    if (el) el.addEventListener('change', saveDetectSettings);
+  }
+
+  loadAndRenderDetectSettings();
 })();

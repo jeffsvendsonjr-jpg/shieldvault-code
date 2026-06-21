@@ -368,6 +368,127 @@ footer {
   opacity: 0.6;
 }
 
+/* ── Settings section ────────────────────────────────────────────────────── */
+
+.settings-section {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-header:hover {
+  color: var(--text);
+  border-color: transparent;
+}
+
+.chevron {
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.settings-body {
+  padding: 6px 12px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.settings-group-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin: 10px 0 4px;
+}
+
+.settings-group-label:first-child {
+  margin-top: 4px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text);
+  gap: 8px;
+}
+
+.toggle-row:hover {
+  color: var(--accent);
+}
+
+.toggle-wrap {
+  flex-shrink: 0;
+  position: relative;
+  width: 30px;
+  height: 16px;
+}
+
+.toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-track {
+  display: block;
+  width: 30px;
+  height: 16px;
+  background: var(--border);
+  border-radius: 8px;
+  position: relative;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--muted);
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.toggle-input:checked + .toggle-track {
+  background: var(--accent);
+}
+
+.toggle-input:checked + .toggle-track::after {
+  transform: translateX(14px);
+  background: #fff;
+}
+
 .proof-list::-webkit-scrollbar {
   width: 4px;
 }

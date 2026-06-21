@@ -34,6 +34,33 @@
       <div class="proof-list" id="proof-list"></div>
     </div>
 
+    <!-- Settings Section -->
+    <div class="settings-section" id="settings-section">
+      <button class="settings-header" id="settings-header-btn" aria-expanded="false">
+        <span>&#9881; Detection Settings</span>
+        <span class="chevron" id="settings-chevron">&#8250;</span>
+      </button>
+      <div class="settings-body" id="settings-body" style="display:none;">
+        <div class="settings-group-label">Secrets &amp; Credentials</div>
+        <label class="toggle-row"><span>API keys &amp; secrets</span><span class="toggle-wrap"><input type="checkbox" id="set-secretGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Auth tokens</span><span class="toggle-wrap"><input type="checkbox" id="set-tokenGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Passwords</span><span class="toggle-wrap"><input type="checkbox" id="set-passwordGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Seed &amp; recovery phrases</span><span class="toggle-wrap"><input type="checkbox" id="set-recoveryPhraseGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <div class="settings-group-label">Personal &amp; Financial</div>
+        <label class="toggle-row"><span>Credit card numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-creditCardGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Phone numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-phoneGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Bank account info</span><span class="toggle-wrap"><input type="checkbox" id="set-bankAccountGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Personal info (SSN, DOB)</span><span class="toggle-wrap"><input type="checkbox" id="set-privateInfoGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <div class="settings-group-label">Data &amp; Content</div>
+        <label class="toggle-row"><span>Client / customer data</span><span class="toggle-wrap"><input type="checkbox" id="set-clientDataGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Large pastes</span><span class="toggle-wrap"><input type="checkbox" id="set-largePasteGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <div class="settings-group-label">Behavioral (off by default)</div>
+        <label class="toggle-row"><span>Public paste-site warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-reputationGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Late-night posting alert</span><span class="toggle-wrap"><input type="checkbox" id="set-lateNightPostAlert" class="toggle-input"><span class="toggle-track"></span></span></label>
+        <label class="toggle-row"><span>Tone warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-emotionalPostWarning" class="toggle-input"><span class="toggle-track"></span></span></label>
+      </div>
+    </div>
+
     <!-- Pro Section - Not activated -->
     <div class="pro-section" id="pro-section">
       <div class="pro-header">
