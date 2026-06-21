@@ -377,41 +377,84 @@ function hardNullify(el) {
   }, 50);
 }
 
-function liftAndFadeGhost(el, text) {
-  if (!el) return;
+function showBlockOverlay(el, blockedText, detectorNames) {
+  // Remove any existing overlay
+  const existing = document.getElementById("sv-block-overlay");
+  if (existing) existing.remove();
 
-  const rect = el.getBoundingClientRect();
-  const ghost = document.createElement("div");
+  const overlay = document.createElement("div");
+  overlay.id = "sv-block-overlay";
+  overlay.style.cssText = [
+    "position:fixed",
+    "top:16px",
+    "right:16px",
+    "max-width:320px",
+    "background:rgba(15,18,28,0.97)",
+    "border:1px solid rgba(76,111,255,0.45)",
+    "border-radius:10px",
+    "box-shadow:0 8px 24px rgba(0,0,0,0.5)",
+    "padding:12px 14px",
+    "z-index:2147483647",
+    "font-family:system-ui,sans-serif",
+    "font-size:13px",
+    "color:#e6e8ee",
+    "line-height:1.4",
+    "transition:opacity 0.4s ease",
+    "opacity:1",
+  ].join(";");
 
-  const maskedText = "••• SECRET BLOCKED •••";
+  const label = detectorNames && detectorNames.length
+    ? detectorNames.slice(0, 3).join(", ") + (detectorNames.length > 3 ? " …" : "")
+    : "Secret detected";
 
-  ghost.textContent = maskedText;
-  ghost.style.position = "fixed";
-  ghost.style.left = `${rect.left}px`;
-  ghost.style.top = `${rect.top}px`;
-  ghost.style.maxWidth = `${rect.width}px`;
-  ghost.style.padding = "6px 10px";
-  ghost.style.fontSize = "12px";
-  ghost.style.fontFamily = "system-ui, sans-serif";
-  ghost.style.fontWeight = "600";
-  ghost.style.color = "#fff";
-  ghost.style.background = "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)";
-  ghost.style.border = "1px solid rgba(255,255,255,0.1)";
-  ghost.style.borderRadius = "6px";
-  ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
-  ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = "2147483647";
-  ghost.style.transition = "transform 1s ease-out, opacity 1s ease-out";
-  ghost.style.opacity = "1";
+  overlay.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:10px">' +
+      '<span style="font-size:18px;line-height:1">🛡</span>' +
+      '<div style="flex:1">' +
+        '<div style="font-weight:700;margin-bottom:3px">Blocked</div>' +
+        '<div style="font-size:11px;color:#8a8f9c;margin-bottom:10px">' +
+          escHtml(label) +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="sv-undo-btn" style="padding:5px 10px;font-size:11px;border-radius:6px;' +
+            'border:1px solid rgba(255,255,255,0.15);background:transparent;' +
+            'color:#8a8f9c;cursor:pointer;font-family:system-ui,sans-serif">Undo (allow once)</button>' +
+          '<button id="sv-dismiss-btn" style="padding:5px 10px;font-size:11px;border-radius:6px;' +
+            'border:none;background:#4c6fff;color:#fff;cursor:pointer;font-family:system-ui,sans-serif">OK</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 
-  document.body.appendChild(ghost);
+  document.body.appendChild(overlay);
 
-  requestAnimationFrame(() => {
-    ghost.style.transform = "translateY(-30px)";
-    ghost.style.opacity = "0";
+  function dismiss() {
+    overlay.style.opacity = "0";
+    setTimeout(() => overlay.remove(), 400);
+  }
+
+  const timer = setTimeout(dismiss, 7000);
+
+  overlay.querySelector("#sv-dismiss-btn").addEventListener("click", function () {
+    clearTimeout(timer);
+    dismiss();
   });
 
-  setTimeout(() => ghost.remove(), 1100);
+  overlay.querySelector("#sv-undo-btn").addEventListener("click", function () {
+    clearTimeout(timer);
+    dismiss();
+    if (el && blockedText) {
+      // Mark as user-approved bypass before restoring
+      el.dataset.shieldvaultBypass = "true";
+      setValue(el, blockedText);
+      setTimeout(function () { delete el.dataset.shieldvaultBypass; }, 15000);
+      el.focus();
+    }
+  });
+}
+
+// Keep liftAndFadeGhost as a no-op alias (called from hardNullify path)
+function liftAndFadeGhost(el, text, detectorNames) {
+  showBlockOverlay(el, text, detectorNames);
 }
 
 function notifyBackground(detectorNames, vector) {
@@ -419,7 +462,8 @@ function notifyBackground(detectorNames, vector) {
     chrome.runtime.sendMessage({
       type: "SHIELDVAULT_PREVENTED",
       detectors: detectorNames,
-      vector: vector
+      vector: vector,
+      domain: window.location.hostname,
     });
   } catch (e) {
     // Extension context may be invalidated, ignore silently
@@ -526,7 +570,7 @@ function handleDetection(text, el, vector, event) {
       // Clear any active bypass before hard-blocking
       delete el.dataset.shieldvaultBypass;
       hardNullify(el);
-      liftAndFadeGhost(el, text);
+      liftAndFadeGhost(el, text, secretMatches);
     }
 
     notifyBackground(secretMatches, vector);
@@ -559,6 +603,7 @@ function handleDetection(text, el, vector, event) {
       event.stopImmediatePropagation();
     }
 
+    notifyBackground(warnings, 'behavioral');
     showBehavioralModal(text, el, warnings, warningTypes);
     devWarn(`Behavioral warning: ${warnings.join(", ")} via ${vector}`);
     return true;
@@ -639,7 +684,7 @@ document.addEventListener(
       // Clear any active bypass before hard-blocking
       delete el.dataset.shieldvaultBypass;
       hardNullify(el);
-      liftAndFadeGhost(el, value);
+      liftAndFadeGhost(el, value, secretMatches);
       notifyBackground(secretMatches, "input-fallback");
       devWarn(`Fallback blocked: ${secretMatches.join(", ")}`);
       return;
@@ -676,7 +721,7 @@ document.addEventListener(
       if (sensitiveFile) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        liftAndFadeGhost(el, sensitiveFile.name);
+        liftAndFadeGhost(el, sensitiveFile.name, ["Sensitive file: " + sensitiveFile.name]);
         notifyBackground(["Sensitive file: " + sensitiveFile.name], "drop");
         devWarn(`Blocked file drop: ${sensitiveFile.name}`);
         return;

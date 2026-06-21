@@ -97,6 +97,16 @@
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .hidden { display: none; }
+    .profile-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .profile-btn {
+      flex: 1; padding: 10px 8px; font-size: 12px; font-weight: 600;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; text-align: center;
+    }
+    .profile-btn.active {
+      border-color: var(--accent); color: var(--text); background: rgba(76,111,255,0.1);
+    }
+    .profile-desc { font-size: 11px; color: var(--muted); margin: 0 0 14px; min-height: 16px; }
   </style>
 </head>
 <body>
@@ -111,6 +121,13 @@
 
     <section data-step="2" class="hidden">
       <h1>Choose protections</h1>
+
+      <div class="profile-row">
+        <button type="button" class="profile-btn" id="profile-strict">🔒 Strict</button>
+        <button type="button" class="profile-btn active" id="profile-balanced">⚖ Balanced</button>
+        <button type="button" class="profile-btn" id="profile-light">💡 Light</button>
+      </div>
+      <p class="profile-desc" id="profile-desc">Core secrets, financial data. Behavioral warnings off.</p>
       <div class="section">
         <h2>Core Leak Protection</h2>
         <p class="hint">Default ON</p>
@@ -177,6 +194,58 @@
       const doneBtn = document.getElementById('done');
       let step = 1;
       let onboardingSaved = false;
+
+      // ── Risk profile picker ────────────────────────────────────────────────
+      const PROFILES = {
+        strict: {
+          desc: 'Everything on — maximum protection including behavioral warnings.',
+          settings: { secretGuard: true, tokenGuard: true, passwordGuard: true,
+            recoveryPhraseGuard: true, privateInfoGuard: true, clientDataGuard: true,
+            largePasteGuard: true, creditCardGuard: true, phoneGuard: true,
+            bankAccountGuard: true, reputationGuard: true,
+            lateNightPostAlert: true, emotionalPostWarning: true },
+        },
+        balanced: {
+          desc: 'Core secrets, financial data. Behavioral warnings off.',
+          settings: { secretGuard: true, tokenGuard: true, passwordGuard: true,
+            recoveryPhraseGuard: true, privateInfoGuard: true, clientDataGuard: true,
+            largePasteGuard: true, creditCardGuard: true, phoneGuard: true,
+            bankAccountGuard: true, reputationGuard: false,
+            lateNightPostAlert: false, emotionalPostWarning: false },
+        },
+        light: {
+          desc: 'API keys and passwords only. No financial or behavioral checks.',
+          settings: { secretGuard: true, tokenGuard: true, passwordGuard: true,
+            recoveryPhraseGuard: false, privateInfoGuard: false, clientDataGuard: false,
+            largePasteGuard: false, creditCardGuard: false, phoneGuard: false,
+            bankAccountGuard: false, reputationGuard: false,
+            lateNightPostAlert: false, emotionalPostWarning: false },
+        },
+      };
+
+      const toggleIds = [
+        'secretGuard', 'passwordGuard', 'privateInfoGuard', 'clientDataGuard',
+        'largePasteGuard', 'lateNightPostAlert', 'emotionalPostWarning',
+      ];
+
+      function applyProfile(name) {
+        const profile = PROFILES[name];
+        if (!profile) return;
+        document.getElementById('profile-desc').textContent = profile.desc;
+        ['strict', 'balanced', 'light'].forEach(function (p) {
+          document.getElementById('profile-' + p).classList.toggle('active', p === name);
+        });
+        toggleIds.forEach(function (id) {
+          const el = document.getElementById(id);
+          if (el && id in profile.settings) el.checked = profile.settings[id];
+        });
+      }
+
+      ['strict', 'balanced', 'light'].forEach(function (name) {
+        document.getElementById('profile-' + name).addEventListener('click', function () {
+          applyProfile(name);
+        });
+      });
 
       function currentSettingsFromUI() {
         const lateNightPostAlert = document.getElementById('lateNightPostAlert').checked;

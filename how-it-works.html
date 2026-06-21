@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShieldVault — How It Works</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #131722;
+      --text: #e6e8ee;
+      --muted: #8a8f9c;
+      --accent: #4c6fff;
+      --border: #1f2433;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --error: #f87171;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 32px 24px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    .tagline { color: var(--muted); font-size: 14px; margin: 0 0 32px; }
+    h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+    p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 10px; }
+    .section {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      background: var(--panel);
+      margin-bottom: 16px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      vertical-align: middle;
+    }
+    .badge-hard { background: rgba(76,111,255,0.18); color: var(--accent); border: 1px solid rgba(76,111,255,0.3); }
+    .badge-soft { background: rgba(251,191,36,0.14); color: var(--warning); border: 1px solid rgba(251,191,36,0.3); }
+    .badge-private { background: rgba(52,211,153,0.14); color: var(--success); border: 1px solid rgba(52,211,153,0.3); }
+    .example-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 12px;
+    }
+    .example-row:last-child { border-bottom: none; }
+    .ex-icon { font-size: 15px; width: 20px; flex-shrink: 0; padding-top: 1px; }
+    .ex-name { font-weight: 600; color: var(--text); min-width: 180px; }
+    .ex-desc { color: var(--muted); }
+    .limit-row { display: flex; gap: 10px; padding: 6px 0; font-size: 12px; align-items: flex-start; }
+    .limit-icon { color: var(--warning); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+    td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--muted); }
+    td:first-child { color: var(--text); font-weight: 500; }
+    footer { margin-top: 32px; font-size: 11px; color: var(--muted); opacity: 0.6; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>🛡 How ShieldVault Works</h1>
+  <p class="tagline">All detection runs locally in your browser. Nothing is sent to any server.</p>
+
+  <!-- Hard blocks -->
+  <div class="section">
+    <span class="badge badge-hard">Hard Block</span>
+    <h2>Secret &amp; Credential Detection</h2>
+    <p>
+      ShieldVault intercepts <strong>paste</strong>, <strong>typed input</strong>, <strong>submit</strong> and <strong>file-drop</strong>
+      events. If a pattern matches, the content is wiped before it reaches the page and you see a "Blocked" overlay.
+      Clicking "Undo (allow once)" restores the content if it was a false positive.
+    </p>
+    <div class="example-row"><span class="ex-icon">🔑</span><span class="ex-name">OpenAI / Anthropic keys</span><span class="ex-desc">e.g. <code>sk-…</code>, <code>sk-ant-api03-…</code></span></div>
+    <div class="example-row"><span class="ex-icon">☁️</span><span class="ex-name">AWS / GCP / Azure tokens</span><span class="ex-desc">Access key IDs, storage connection strings</span></div>
+    <div class="example-row"><span class="ex-icon">🐙</span><span class="ex-name">GitHub / GitLab PATs</span><span class="ex-desc"><code>ghp_…</code>, <code>glpat-…</code>, fine-grained tokens</span></div>
+    <div class="example-row"><span class="ex-icon">💳</span><span class="ex-name">Stripe keys &amp; webhooks</span><span class="ex-desc"><code>sk_live_…</code>, <code>whsec_…</code></span></div>
+    <div class="example-row"><span class="ex-icon">🔐</span><span class="ex-name">Private keys &amp; certificates</span><span class="ex-desc">RSA / OpenSSH / PGP / EC PEM blocks</span></div>
+    <div class="example-row"><span class="ex-icon">🗄</span><span class="ex-name">Database URLs</span><span class="ex-desc">Postgres, MySQL, MongoDB, Redis URLs with credentials</span></div>
+    <div class="example-row"><span class="ex-icon">💬</span><span class="ex-name">Slack / Discord tokens &amp; webhooks</span><span class="ex-desc">Bot tokens, app tokens, incoming webhooks</span></div>
+    <div class="example-row"><span class="ex-icon">👤</span><span class="ex-name">Personal &amp; financial data</span><span class="ex-desc">SSN, credit card numbers, bank routing/account numbers, phone numbers</span></div>
+    <div class="example-row"><span class="ex-icon">📋</span><span class="ex-name">Large pastes</span><span class="ex-desc">Any paste over ~1,800 characters triggers a warning</span></div>
+  </div>
+
+  <!-- Soft blocks -->
+  <div class="section">
+    <span class="badge badge-soft">Soft Flag (Off by default)</span>
+    <h2>Behavioral &amp; Tone Warnings</h2>
+    <p>
+      When enabled in Settings, ShieldVault shows a pause modal before you send messages that may
+      contain heated language. You can always click "Send Anyway" — it is never a hard block.
+    </p>
+    <div class="example-row"><span class="ex-icon">😤</span><span class="ex-name">All-caps passages</span><span class="ex-desc">Long runs of uppercase text suggest shouting</span></div>
+    <div class="example-row"><span class="ex-icon">😬</span><span class="ex-name">Passive-aggressive phrases</span><span class="ex-desc">"Per my last email", "with all due respect" …</span></div>
+    <div class="example-row"><span class="ex-icon">🌙</span><span class="ex-name">Late-night posting</span><span class="ex-desc">Submissions between 11 PM – 5 AM get a "sleep on it?" nudge</span></div>
+    <div class="example-row"><span class="ex-icon">📢</span><span class="ex-name">Paste-site warnings</span><span class="ex-desc">Alerts when pasting to public sites like Pastebin</span></div>
+  </div>
+
+  <!-- Privacy -->
+  <div class="section">
+    <span class="badge badge-private">Privacy</span>
+    <h2>What ShieldVault stores</h2>
+    <table>
+      <tr><th>Data</th><th>Where</th><th>When cleared</th></tr>
+      <tr><td>Block metadata (site, type, time)</td><td>chrome.storage.local — your device only</td><td>Manual clear or uninstall</td></tr>
+      <tr><td>Your detection settings</td><td>chrome.storage.local — your device only</td><td>Manual reset or uninstall</td></tr>
+      <tr><td>Pro/license status</td><td>localStorage — your browser only</td><td>Manual deactivate or clear browser data</td></tr>
+      <tr><td>Your actual secrets or message content</td><td><strong>Never stored anywhere</strong></td><td>—</td></tr>
+    </table>
+  </div>
+
+  <!-- Known limits -->
+  <div class="section">
+    <h2>Known limits</h2>
+    <div class="limit-row"><span class="limit-icon">⚠</span><span>ShieldVault only watches sites listed in its permissions. Custom or enterprise AI tools on unlisted domains are not covered.</span></div>
+    <div class="limit-row"><span class="limit-icon">⚠</span><span>Short or heavily obfuscated secrets may not be detected — ShieldVault uses pattern matching, not AI inference.</span></div>
+    <div class="limit-row"><span class="limit-icon">⚠</span><span>If a site uses a non-standard editor (e.g. CodeMirror canvas-rendered), detection may not intercept every keystroke path.</span></div>
+    <div class="limit-row"><span class="limit-icon">⚠</span><span>Phone number detection may produce false positives on numeric data that looks like phone numbers.</span></div>
+  </div>
+
+  <footer>ShieldVault — Detection without possession</footer>
+</body>
+</html>

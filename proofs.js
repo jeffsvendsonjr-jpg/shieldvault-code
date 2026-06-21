@@ -31,10 +31,20 @@
       const item = document.createElement('div');
       item.className = 'proof-item';
       const time = new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const isHard = p.vector !== 'behavioral';
+      const blockBadge = isHard
+        ? '<span class="tag tag-hard">Hard Block</span>'
+        : '<span class="tag tag-soft">Soft Flag</span>';
+      const detectorTags = (p.detectors || [])
+        .map(function (d) { return '<span class="tag tag-detector">' + escHtml(d) + '</span>'; })
+        .join('');
       item.innerHTML =
-        '<span class="proof-domain">' + escHtml(p.domain || 'unknown') + '</span>' +
-        '<span class="proof-type">' + escHtml(p.detectors ? p.detectors.join(', ') : p.vector || '') + '</span>' +
-        '<span class="proof-time">' + time + '</span>';
+        '<div class="proof-header">' +
+          '<span class="proof-domain">' + escHtml(p.domain || 'unknown') + '</span>' +
+          blockBadge +
+          '<span class="proof-time">' + time + '</span>' +
+        '</div>' +
+        (detectorTags ? '<div class="proof-details">' + detectorTags + '</div>' : '');
       container.appendChild(item);
     }
   }
@@ -325,4 +335,24 @@
   }
 
   loadAndRenderDetectSettings();
+
+  // ── Version display ───────────────────────────────────────────────────────
+
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const vEl = document.getElementById('sv-version');
+    if (vEl && manifest.version) vEl.textContent = 'ShieldVault v' + manifest.version;
+  } catch (_) {}
+
+  // ── How it works link ─────────────────────────────────────────────────────
+
+  const howItWorksLink = document.getElementById('how-it-works-link');
+  if (howItWorksLink) {
+    howItWorksLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      try {
+        chrome.tabs.create({ url: chrome.runtime.getURL('how-it-works.html') });
+      } catch (_) {}
+    });
+  }
 })();

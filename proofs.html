@@ -10,9 +10,15 @@
 <body>
   <div class="container">
     <header>
-      <h1>Proofs of Prevention</h1>
+      <h1>ShieldVault</h1>
       <p class="subtitle">What ShieldVault blocked this session</p>
     </header>
+
+    <div class="value-bar">
+      <span class="vb-item vb-hard">🛡 Hard blocks secrets</span>
+      <span class="vb-item vb-soft">⚠ Soft flags tone</span>
+      <span class="vb-item vb-local">🔒 100% local</span>
+    </div>
 
     <div class="notice">
       <strong>Session-only memory:</strong> This list exists only in browser memory.
@@ -108,7 +114,8 @@
     </div>
 
     <footer>
-      ShieldVault — Detection without possession
+      <span id="sv-version">ShieldVault</span> — Detection without possession
+      · <a href="#" id="how-it-works-link" class="footer-link">How it works</a>
     </footer>
   </div>
   <script src="proofs.js"></script>

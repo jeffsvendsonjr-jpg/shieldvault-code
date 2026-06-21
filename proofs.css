@@ -368,6 +368,64 @@ footer {
   opacity: 0.6;
 }
 
+.footer-link {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.8;
+}
+
+.footer-link:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+/* ── Value bar ─────────────────────────────────────────────────────────────── */
+
+.value-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.vb-item {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.vb-hard {
+  background: rgba(76, 111, 255, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(76, 111, 255, 0.25);
+}
+
+.vb-soft {
+  background: rgba(251, 191, 36, 0.10);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.vb-local {
+  background: rgba(52, 211, 153, 0.10);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+/* ── Block type tags ───────────────────────────────────────────────────────── */
+
+.tag-hard {
+  background: rgba(76, 111, 255, 0.15);
+  color: var(--accent);
+}
+
+.tag-soft {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+}
+
 /* ── Settings section ────────────────────────────────────────────────────── */
 
 .settings-section {

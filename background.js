@@ -1,4 +1,4 @@
-// Service worker for userp.ly extension
+// Service worker for ShieldVault extension
 // Review-hardened: no analytics or install/update event tracking.
 
 const SUPABASE_URL = 'https://nihquqccvnfuaqsxyymj.supabase.co';
@@ -45,8 +45,52 @@ chrome.runtime.onInstalled.addListener((details) => {
   ensureShieldVaultDefaults();
 });
 
+
+// ── Proof store ──────────────────────────────────────────────────────────────
+// Keeps the last SV_MAX_PROOFS blocked events in memory and persists them to
+// chrome.storage.local so history survives a service-worker restart.
+
+const SV_PROOFS_KEY = 'shieldvault_proofs';
+const SV_MAX_PROOFS = 100;
+let _svProofs = [];
+
+(async function loadSvProofs() {
+  try {
+    const data = await chrome.storage.local.get([SV_PROOFS_KEY]);
+    if (data && Array.isArray(data[SV_PROOFS_KEY])) {
+      _svProofs = data[SV_PROOFS_KEY].slice(0, SV_MAX_PROOFS);
+    }
+  } catch (_) {}
+})();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.type !== 'USERPLY_VERIFY_DATE') return false;
+  if (!message) return false;
+
+  // ── Record a blocked event from the content script ───────────────────────
+  if (message.type === 'SHIELDVAULT_PREVENTED') {
+    const proof = {
+      ts: Date.now(),
+      domain: message.domain ||
+        (sender.tab && sender.tab.url
+          ? (() => { try { return new URL(sender.tab.url).hostname; } catch (_) { return ''; } })()
+          : ''),
+      detectors: message.detectors || [],
+      vector: message.vector || '',
+    };
+    _svProofs.unshift(proof);
+    if (_svProofs.length > SV_MAX_PROOFS) _svProofs.length = SV_MAX_PROOFS;
+    chrome.storage.local.set({ [SV_PROOFS_KEY]: _svProofs }).catch(() => {});
+    return false;
+  }
+
+  // ── Return stored proofs when the popup opens ────────────────────────────
+  if (message.type === 'SHIELDVAULT_GET_PROOFS') {
+    sendResponse({ proofs: _svProofs });
+    return false;
+  }
+
+  if (message.type !== 'USERPLY_VERIFY_DATE') return false;
+
 
   (async () => {
     try {
