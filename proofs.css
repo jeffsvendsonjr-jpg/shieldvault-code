@@ -285,6 +285,14 @@ button:disabled {
   border: none;
 }
 
+.pro-help-text,
+.license-help-text {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .license-form {
   display: flex;
   flex-direction: column;

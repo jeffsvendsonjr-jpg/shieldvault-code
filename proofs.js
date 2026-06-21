@@ -2,9 +2,38 @@
   'use strict';
 
   const API_BASE = 'https://shieldvault.site';
-  const PRO_KEY = 'shieldvault_pro_v1';
+  const LEGACY_PRO_KEY = 'shieldvault_pro_v1';
+  const PRO_STORAGE_KEY = 'shieldvault_pro';
+  const LICENSE_KEY_STORAGE = 'shieldvault_license_key';
+  const PRO_REVALIDATE_TTL = 86400000; // 24 hours
   const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
   const STRIPE_KEY_TTL = 86400000; // 24 hours
+
+  function storageGet(keys) {
+    return new Promise(function (resolve) {
+      chrome.storage.local.get(keys, function (result) {
+        if (chrome.runtime.lastError) return resolve({});
+        resolve(result || {});
+      });
+    });
+  }
+
+  function storageSet(payload) {
+    return new Promise(function (resolve, reject) {
+      chrome.storage.local.set(payload, function () {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        resolve();
+      });
+    });
+  }
+
+  function storageRemove(keys) {
+    return new Promise(function (resolve) {
+      chrome.storage.local.remove(keys, function () {
+        resolve();
+      });
+    });
+  }
 
   // ── Proof list ──────────────────────────────────────────────────────────────
 
@@ -69,10 +98,11 @@
     chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_PROOFS' }, function (response) {
       if (chrome.runtime.lastError) return;
       if (response && Array.isArray(response.proofs)) {
-        const pro = getProStatus();
-        const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
-        proofs = response.proofs.slice(0, limit);
-        renderProofs();
+        getProStatus().then(function (pro) {
+          const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
+          proofs = response.proofs.slice(0, limit);
+          renderProofs();
+        });
       }
     });
   } catch (_) {}
@@ -81,16 +111,17 @@
   try {
     chrome.runtime.onMessage.addListener(function (message) {
       if (!message || message.type !== 'SHIELDVAULT_PREVENTED') return;
-      const pro = getProStatus();
-      const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
-      proofs.unshift({
-        ts: Date.now(),
-        domain: message.domain || '',
-        detectors: message.detectors || [],
-        vector: message.vector || '',
+      getProStatus().then(function (pro) {
+        const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
+        proofs.unshift({
+          ts: Date.now(),
+          domain: message.domain || '',
+          detectors: message.detectors || [],
+          vector: message.vector || '',
+        });
+        if (proofs.length > limit) proofs.length = limit;
+        renderProofs();
       });
-      if (proofs.length > limit) proofs.length = limit;
-      renderProofs();
     });
   } catch (_) {}
 
@@ -98,24 +129,72 @@
 
   // ── Pro status ───────────────────────────────────────────────────────────────
 
-  function getProStatus() {
+  function normalizeLicenseKey(raw) {
+    return String(raw || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .toUpperCase();
+  }
+
+  async function getProStatus() {
+    const data = await storageGet([PRO_STORAGE_KEY]);
+    return data[PRO_STORAGE_KEY] || null;
+  }
+
+  async function clearProStatus() {
+    await storageRemove([PRO_STORAGE_KEY, LICENSE_KEY_STORAGE]);
+  }
+
+  async function migrateLegacyProStatus() {
     try {
-      const raw = localStorage.getItem(PRO_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch { return null; }
+      const raw = localStorage.getItem(LEGACY_PRO_KEY);
+      if (!raw) return;
+      const legacy = JSON.parse(raw);
+      if (legacy && legacy.active) {
+        const key = normalizeLicenseKey(legacy.key || '');
+        if (key) {
+          await storageSet({
+            [PRO_STORAGE_KEY]: Object.assign({}, legacy, { key }),
+            [LICENSE_KEY_STORAGE]: key,
+          });
+        } else {
+          await storageSet({ [PRO_STORAGE_KEY]: legacy });
+        }
+      }
+      localStorage.removeItem(LEGACY_PRO_KEY);
+    } catch (_) {}
   }
 
-  function saveProStatus(data) {
-    localStorage.setItem(PRO_KEY, JSON.stringify(data));
+  async function revalidateProStatusIfNeeded() {
+    const pro = await getProStatus();
+    if (!pro || !pro.active || !pro.key) return;
+    const ageMs = Date.now() - Number(pro.lastValidatedAt || pro.activatedAt || 0);
+    if (ageMs >= 0 && ageMs < PRO_REVALIDATE_TTL) return;
+    try {
+      const res = await fetch(API_BASE + '/api/license/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: normalizeLicenseKey(pro.key) }),
+      });
+      if (!res.ok) {
+        await clearProStatus();
+        return;
+      }
+      const key = normalizeLicenseKey(pro.key);
+      await storageSet({
+        [PRO_STORAGE_KEY]: {
+          active: true,
+          key,
+          activatedAt: Number(pro.activatedAt || Date.now()),
+          lastValidatedAt: Date.now(),
+        },
+        [LICENSE_KEY_STORAGE]: key,
+      });
+    } catch (_) {}
   }
 
-  function clearProStatus() {
-    localStorage.removeItem(PRO_KEY);
-  }
-
-  function applyProState() {
-    const pro = getProStatus();
+  async function applyProState() {
+    const pro = await getProStatus();
     const sectionUpgrade = document.getElementById('pro-section');
     const sectionActive = document.getElementById('pro-active');
     const sectionLicense = document.getElementById('license-input-section');
@@ -131,7 +210,11 @@
     }
   }
 
-  applyProState();
+  (async function bootstrapProState() {
+    await migrateLegacyProStatus();
+    await revalidateProStatusIfNeeded();
+    await applyProState();
+  })();
 
   // ── Behavioral upgrade nudge ─────────────────────────────────────────────────
   // After 5+ preventions, pulse the Pro section to catch the user at peak value.
@@ -140,14 +223,15 @@
     chrome.storage.local.get(['shieldvault_behavioral_uses'], function (result) {
       if (chrome.runtime.lastError) return;
       const uses = result.shieldvault_behavioral_uses || 0;
-      const pro = getProStatus();
-      if (uses >= 5 && !(pro && pro.active)) {
-        const proSection = document.getElementById('pro-section');
-        if (proSection && proSection.style.display !== 'none') {
-          proSection.classList.add('pro-section--nudge');
-          proSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      getProStatus().then(function (pro) {
+        if (uses >= 5 && !(pro && pro.active)) {
+          const proSection = document.getElementById('pro-section');
+          if (proSection && proSection.style.display !== 'none') {
+            proSection.classList.add('pro-section--nudge');
+            proSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
         }
-      }
+      });
     });
   } catch (_) {}
 
@@ -205,6 +289,7 @@
       const data = await res.json();
       if (data.url) {
         window.open(data.url, '_blank');
+        await openLicenseSection();
       } else {
         throw new Error('No checkout URL returned');
       }
@@ -228,34 +313,55 @@
 
   // ── License key flow ─────────────────────────────────────────────────────────
 
-  document.getElementById('btn-already-purchased').addEventListener('click', function () {
+  const licenseInput = document.getElementById('license-key-input');
+  const licenseError = document.getElementById('license-error');
+
+  async function openLicenseSection() {
     document.getElementById('pro-section').style.display = 'none';
     document.getElementById('license-input-section').style.display = '';
-    document.getElementById('license-key-input').focus();
+    licenseError.style.display = 'none';
+    const stored = await storageGet([LICENSE_KEY_STORAGE]);
+    if (stored[LICENSE_KEY_STORAGE]) {
+      licenseInput.value = stored[LICENSE_KEY_STORAGE];
+    }
+    licenseInput.focus();
+  }
+
+  document.getElementById('btn-already-purchased').addEventListener('click', function () {
+    openLicenseSection();
   });
 
   document.getElementById('btn-cancel-activate').addEventListener('click', function () {
     document.getElementById('license-input-section').style.display = 'none';
     document.getElementById('pro-section').style.display = '';
-    document.getElementById('license-error').style.display = 'none';
-    document.getElementById('license-key-input').value = '';
+    licenseError.style.display = 'none';
+  });
+
+  licenseInput.addEventListener('input', function () {
+    const key = normalizeLicenseKey(licenseInput.value);
+    storageSet({ [LICENSE_KEY_STORAGE]: key }).catch(function () {});
+  });
+
+  licenseInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      document.getElementById('btn-activate').click();
+    }
   });
 
   document.getElementById('btn-activate').addEventListener('click', async function () {
-    const input = document.getElementById('license-key-input');
-    const errorEl = document.getElementById('license-error');
     const btn = this;
-    const key = input.value.trim();
+    const key = normalizeLicenseKey(licenseInput.value);
 
     if (!key) {
-      errorEl.textContent = 'Please enter a license key.';
-      errorEl.style.display = '';
+      licenseError.textContent = 'Please enter a license key.';
+      licenseError.style.display = '';
       return;
     }
 
     btn.disabled = true;
     btn.textContent = 'Activating…';
-    errorEl.style.display = 'none';
+    licenseError.style.display = 'none';
 
     try {
       const res = await fetch(API_BASE + '/api/license/activate', {
@@ -267,19 +373,30 @@
         const body = await res.json().catch(function () { return {}; });
         throw new Error(body.error || 'Invalid license key');
       }
-      saveProStatus({ active: true, key, activatedAt: Date.now() });
-      applyProState();
+      await storageSet({
+        [PRO_STORAGE_KEY]: { active: true, key, activatedAt: Date.now(), lastValidatedAt: Date.now() },
+        [LICENSE_KEY_STORAGE]: key,
+      });
+      licenseInput.value = key;
+      await applyProState();
+      btn.textContent = 'Activated';
+      setTimeout(function () {
+        btn.textContent = 'Activate';
+        btn.disabled = false;
+      }, 1200);
+      return;
     } catch (err) {
-      errorEl.textContent = err.message || 'Activation failed. Please try again.';
-      errorEl.style.display = '';
+      licenseError.textContent = err.message || 'Activation failed. Please try again.';
+      licenseError.style.display = '';
       btn.textContent = 'Activate';
       btn.disabled = false;
+      return;
     }
   });
 
-  document.getElementById('btn-reset-pro').addEventListener('click', function () {
-    clearProStatus();
-    applyProState();
+  document.getElementById('btn-reset-pro').addEventListener('click', async function () {
+    await clearProStatus();
+    await applyProState();
   });
 
   // ── Detection Settings ────────────────────────────────────────────────────────
