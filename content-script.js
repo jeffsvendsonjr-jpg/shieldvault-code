@@ -42,6 +42,50 @@ function devWarn(...args) {
   if (DEV) console.warn("[ShieldVault]", ...args);
 }
 
+// ================================
+// BYPASS HELPERS (Undo allow once)
+// Bypass is scoped to same element, same content hash, 3-minute window.
+// ================================
+const SV_BYPASS_TTL = 3 * 60 * 1000; // 3 minutes
+
+function svHashStr(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h.toString(36);
+}
+
+function setSvBypass(el, text) {
+  if (!el) return;
+  const hash = svHashStr(text);
+  const expiry = Date.now() + SV_BYPASS_TTL;
+  el.dataset.shieldvaultBypassHash = hash;
+  el.dataset.shieldvaultBypassExpiry = String(expiry);
+  setTimeout(function () {
+    if (el.dataset.shieldvaultBypassHash === hash) {
+      delete el.dataset.shieldvaultBypassHash;
+      delete el.dataset.shieldvaultBypassExpiry;
+    }
+  }, SV_BYPASS_TTL);
+}
+
+function clearSvBypass(el) {
+  if (!el) return;
+  delete el.dataset.shieldvaultBypassHash;
+  delete el.dataset.shieldvaultBypassExpiry;
+}
+
+function isBypassActive(el, text) {
+  if (!el || !el.dataset.shieldvaultBypassHash) return false;
+  if (Date.now() > Number(el.dataset.shieldvaultBypassExpiry || 0)) {
+    clearSvBypass(el);
+    return false;
+  }
+  return svHashStr(text) === el.dataset.shieldvaultBypassHash;
+}
+
 function mergeSettings(raw) {
   return { ...SHIELDVAULT_DEFAULT_SETTINGS, ...(raw || {}) };
 }
@@ -443,10 +487,10 @@ function showBlockOverlay(el, blockedText, detectorNames) {
     clearTimeout(timer);
     dismiss();
     if (el && blockedText) {
-      // Mark as user-approved bypass before restoring
-      el.dataset.shieldvaultBypass = "true";
+      // Grant a content-hash-scoped bypass before restoring so the INPUT
+      // event fired by setValue does not immediately re-block.
+      setSvBypass(el, blockedText);
       setValue(el, blockedText);
-      setTimeout(function () { delete el.dataset.shieldvaultBypass; }, 15000);
       el.focus();
     }
   });
@@ -533,10 +577,7 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     modal.remove();
     if (el) {
       el.removeAttribute("readonly");
-      el.dataset.shieldvaultBypass = "true";
-      setTimeout(() => {
-        delete el.dataset.shieldvaultBypass;
-      }, 5000);
+      setSvBypass(el, text);
       el.focus();
     }
   });
@@ -561,14 +602,16 @@ function handleDetection(text, el, vector, event) {
   // --- Hard block: secrets ---
   const secretMatches = detectSecrets(text);
   if (secretMatches.length > 0) {
+    // Allow if the user explicitly approved this exact content via "Undo allow once"
+    if (isBypassActive(el, text)) return false;
+
     if (event && typeof event.preventDefault === "function") {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
 
     if (el) {
-      // Clear any active bypass before hard-blocking
-      delete el.dataset.shieldvaultBypass;
+      clearSvBypass(el);
       hardNullify(el);
       liftAndFadeGhost(el, text, secretMatches);
     }
@@ -579,7 +622,7 @@ function handleDetection(text, el, vector, event) {
   }
 
   // --- Soft block: behavioral ---
-  if (el && el.dataset.shieldvaultBypass === "true") return false;
+  if (el && isBypassActive(el, text)) return false;
 
   const warnings = [];
   const warningTypes = [];
@@ -681,8 +724,9 @@ document.addEventListener(
     // Hard block: secrets
     const secretMatches = detectSecrets(value);
     if (secretMatches.length > 0) {
-      // Clear any active bypass before hard-blocking
-      delete el.dataset.shieldvaultBypass;
+      // Allow if the user explicitly approved this exact content via "Undo allow once"
+      if (isBypassActive(el, value)) return;
+      clearSvBypass(el);
       hardNullify(el);
       liftAndFadeGhost(el, value, secretMatches);
       notifyBackground(secretMatches, "input-fallback");
@@ -691,7 +735,7 @@ document.addEventListener(
     }
 
     // Soft block: behavioral (skip if bypass is active)
-    if (el.dataset.shieldvaultBypass === "true") return;
+    if (isBypassActive(el, value)) return;
 
     const behaviorMatches = detectBehaviors(value);
     if (behaviorMatches.length > 0) {

@@ -63,11 +63,15 @@
   });
 
   // Ask background for stored proofs (best-effort; extension may not have any)
+  const FREE_HISTORY_LIMIT = 25;
+  const PRO_HISTORY_LIMIT = 100;
   try {
     chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_PROOFS' }, function (response) {
       if (chrome.runtime.lastError) return;
       if (response && Array.isArray(response.proofs)) {
-        proofs = response.proofs;
+        const pro = getProStatus();
+        const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
+        proofs = response.proofs.slice(0, limit);
         renderProofs();
       }
     });
@@ -77,12 +81,15 @@
   try {
     chrome.runtime.onMessage.addListener(function (message) {
       if (!message || message.type !== 'SHIELDVAULT_PREVENTED') return;
+      const pro = getProStatus();
+      const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
       proofs.unshift({
         ts: Date.now(),
         domain: message.domain || '',
         detectors: message.detectors || [],
         vector: message.vector || '',
       });
+      if (proofs.length > limit) proofs.length = limit;
       renderProofs();
     });
   } catch (_) {}
