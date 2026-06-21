@@ -17,14 +17,14 @@ ShieldVault now runs on AI chat platforms, social media (LinkedIn, Reddit, Twitt
 - We don't collect your secrets or API keys
 - We don't track your browsing
 - We don't use analytics
-- We don't transmit anything to any server
 - We don't store your data anywhere except locally in your browser
 - We don't send your message content to any external AI or server for analysis — behavioral text analysis uses simple regex patterns that run entirely in your browser
 
 ### What we DO:
-- All detection — both secret scanning and behavioral analysis — happens 100% locally in your browser
-- Session logs (which sites blocked secrets) stay in browser memory and disappear when you close the browser
+- All detection — both secret scanning and behavioral analysis — happens locally in your browser
+- Session logs (site/time/detection metadata only) are stored in Chrome local storage on your device
 - Pro status is stored locally using Chrome's storage API
+- License activation and checkout call ShieldVault servers; no secret/message content is sent in those requests
 
 ## Links
 

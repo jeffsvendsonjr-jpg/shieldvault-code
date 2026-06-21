@@ -71,7 +71,7 @@
 </head>
 <body>
   <h1>🛡 How ShieldVault Works</h1>
-  <p class="tagline">All detection runs locally in your browser. Nothing is sent to any server.</p>
+  <p class="tagline">All detection runs locally in your browser. License activation and checkout contact ShieldVault servers.</p>
 
   <!-- Hard blocks -->
   <div class="section">
@@ -115,7 +115,7 @@
       <tr><th>Data</th><th>Where</th><th>When cleared</th></tr>
       <tr><td>Block metadata (site, type, time)</td><td>chrome.storage.local — your device only</td><td>Manual clear or uninstall</td></tr>
       <tr><td>Your detection settings</td><td>chrome.storage.local — your device only</td><td>Manual reset or uninstall</td></tr>
-      <tr><td>Pro/license status</td><td>localStorage — your browser only</td><td>Manual deactivate or clear browser data</td></tr>
+      <tr><td>Pro/license status</td><td>chrome.storage.local — your device only</td><td>Manual deactivate or uninstall</td></tr>
       <tr><td>Your actual secrets or message content</td><td><strong>Never stored anywhere</strong></td><td>—</td></tr>
     </table>
   </div>
