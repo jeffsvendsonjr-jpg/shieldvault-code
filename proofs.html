@@ -11,13 +11,18 @@
   <div class="container">
     <header>
       <h1>ShieldVault</h1>
-      <p class="subtitle">What ShieldVault has blocked recently</p>
+      <p class="subtitle">Hard blocks secrets. Soft flags tone. 100% local on your device.</p>
     </header>
 
     <div class="value-bar">
       <span class="vb-item vb-hard">🛡 Hard blocks secrets</span>
       <span class="vb-item vb-soft">⚠ Soft flags tone</span>
       <span class="vb-item vb-local">🔒 100% local</span>
+    </div>
+
+    <div class="quick-trust">
+      <strong>Hard Block</strong> wipes detected secrets before send.<br>
+      <strong>Soft Flag</strong> pauses risky tone so you can edit or send anyway.
     </div>
 
     <div class="notice">
@@ -34,7 +39,7 @@
       <div class="empty-state" id="empty-state">
         <div class="icon">&#10003;</div>
         <p>No preventions recorded yet</p>
-        <p class="hint">When ShieldVault blocks a secret, it will appear here</p>
+        <p class="hint">Each prevention shows what triggered and why ShieldVault intervened.</p>
       </div>
       <div class="proof-list" id="proof-list"></div>
     </div>
@@ -74,10 +79,12 @@
       </div>
       <ul class="pro-features">
         <li>&#128274; Extended history — view up to 100 blocked events (free plan: last 25)</li>
-        <li>&#9889; Expanded detectors for tokens, keys &amp; certs</li>
+        <li>&#9889; Expanded detectors (Anthropic, HuggingFace, Shopify, Vault, and more)</li>
         <li>&#128680; Instant alerts on high-risk paste targets</li>
         <li>&#128587; Priority support from the developer</li>
       </ul>
+      <button class="pro-btn pro-btn-preview" id="btn-preview">Start 7-day Pro preview</button>
+      <p class="pro-help-text" id="preview-help-text">One-time preview. No payment required.</p>
       <div class="pro-buttons">
         <button class="pro-btn pro-btn-annual" id="btn-annual">
           $49.99/year <span class="pro-savings">Save 30%</span>
@@ -110,12 +117,18 @@
     <!-- Pro Active State (hidden by default) -->
     <div class="pro-active" id="pro-active" style="display: none;">
       <div class="pro-active-badge">PRO</div>
-      <p>Thanks for supporting ShieldVault!</p>
+      <p id="pro-active-text">Thanks for supporting ShieldVault!</p>
       <button class="pro-reset-link" id="btn-reset-pro">Deactivate Pro</button>
     </div>
 
+    <div class="changelog">
+      <div class="changelog-title">Changelog</div>
+      <div class="changelog-item"><strong>v1.6.6 · 2026-06-21</strong> — clearer hard/soft/local messaging, per-block “why”, and false-positive controls.</div>
+      <div class="changelog-item"><strong>v1.6.5</strong> — detection settings, Pro licensing flow, and persistent proof history.</div>
+    </div>
+
     <footer>
-      <span id="sv-version">ShieldVault</span> — Detection without possession
+      <span id="sv-version">ShieldVault</span> · <span id="sv-updated">Updated —</span> — Detection without possession
       · <a href="#" id="how-it-works-link" class="footer-link">How it works</a>
     </footer>
   </div>

@@ -38,6 +38,17 @@ h1 {
   margin: 0 0 10px;
 }
 
+.quick-trust {
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(76, 111, 255, 0.08);
+  border: 1px solid rgba(76, 111, 255, 0.2);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
 .notice {
   font-size: 10px;
   color: var(--muted);
@@ -148,6 +159,13 @@ button:disabled {
   gap: 4px;
 }
 
+.proof-reason {
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .tag {
   font-size: 9px;
   padding: 2px 6px;
@@ -234,6 +252,19 @@ button:disabled {
 .pro-btn-monthly:hover {
   background: rgba(244, 183, 64, 0.1);
   border-color: var(--pro-gold);
+}
+
+.pro-btn-preview {
+  width: 100%;
+  margin-bottom: 8px;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: var(--success);
+}
+
+.pro-btn-preview:hover {
+  background: rgba(52, 211, 153, 0.2);
+  border-color: rgba(52, 211, 153, 0.65);
 }
 
 .pro-btn-annual {
@@ -386,6 +417,29 @@ footer {
 .footer-link:hover {
   opacity: 1;
   color: var(--text);
+}
+
+.changelog {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--panel);
+}
+
+.changelog-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.changelog-item {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 4px 0;
 }
 
 /* ── Value bar ─────────────────────────────────────────────────────────────── */

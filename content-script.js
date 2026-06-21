@@ -25,11 +25,12 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   emotionalPostWarning: false,
 };
 let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
-
-// ================================
-// TIER (assumed plus for behavioral modal)
-// ================================
-const USER_TIER = "plus";
+const SHIELDVAULT_PRO_KEY = "shieldvault_pro";
+const SHIELDVAULT_PRO_PREVIEW_UNTIL_KEY = "shieldvault_pro_preview_until";
+const SHIELDVAULT_ALLOWED_PATTERNS_KEY = "shieldvault_allowed_patterns";
+const SHIELDVAULT_ALLOWED_PATTERNS_MAX = 120;
+let SHIELDVAULT_PRO_ACTIVE = false;
+let SHIELDVAULT_ALLOWED_PATTERN_KEYS = new Set();
 
 // ================================
 // DEV LOGGING
@@ -86,6 +87,40 @@ function isBypassActive(el, text) {
   return svHashStr(text) === el.dataset.shieldvaultBypassHash;
 }
 
+function detectorRuleKey(detectorName, domain) {
+  return String(domain || "").replace(/^www\./, "").toLowerCase() + "::" + String(detectorName || "").toLowerCase();
+}
+
+function isDetectorPatternAllowed(detectorName) {
+  const currentDomain = String(window.location.hostname || "").replace(/^www\./, "").toLowerCase();
+  return SHIELDVAULT_ALLOWED_PATTERN_KEYS.has(detectorRuleKey(detectorName, currentDomain));
+}
+
+async function allowDetectorPatterns(detectorNames) {
+  const names = Array.isArray(detectorNames) ? detectorNames.filter(Boolean) : [];
+  if (!names.length) return;
+  const domain = String(window.location.hostname || "").replace(/^www\./, "").toLowerCase();
+  try {
+    const data = await chrome.storage.local.get([SHIELDVAULT_ALLOWED_PATTERNS_KEY]);
+    const existing = Array.isArray(data && data[SHIELDVAULT_ALLOWED_PATTERNS_KEY]) ? data[SHIELDVAULT_ALLOWED_PATTERNS_KEY] : [];
+    const now = Date.now();
+    const dedupe = new Map();
+    for (const rule of existing) {
+      if (!rule || !rule.detector || !rule.domain) continue;
+      dedupe.set(detectorRuleKey(rule.detector, rule.domain), rule);
+    }
+    for (const detectorName of names) {
+      const key = detectorRuleKey(detectorName, domain);
+      dedupe.set(key, { detector: detectorName, domain: domain, createdAt: now });
+    }
+    const nextRules = Array.from(dedupe.values()).slice(-SHIELDVAULT_ALLOWED_PATTERNS_MAX);
+    await chrome.storage.local.set({ [SHIELDVAULT_ALLOWED_PATTERNS_KEY]: nextRules });
+    SHIELDVAULT_ALLOWED_PATTERN_KEYS = new Set(nextRules.map((rule) => detectorRuleKey(rule.detector, rule.domain)));
+  } catch (_) {
+    // Ignore storage failures in content script.
+  }
+}
+
 function mergeSettings(raw) {
   return { ...SHIELDVAULT_DEFAULT_SETTINGS, ...(raw || {}) };
 }
@@ -96,6 +131,26 @@ async function loadShieldVaultSettings() {
     SHIELDVAULT_SETTINGS = mergeSettings(data && data[SHIELDVAULT_SETTINGS_KEY]);
   } catch (_) {
     SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
+  }
+}
+
+async function loadShieldVaultRuntimeState() {
+  try {
+    const data = await chrome.storage.local.get([
+      SHIELDVAULT_PRO_KEY,
+      SHIELDVAULT_PRO_PREVIEW_UNTIL_KEY,
+      SHIELDVAULT_ALLOWED_PATTERNS_KEY,
+    ]);
+    const paid = data && data[SHIELDVAULT_PRO_KEY];
+    const previewUntil = Number(data && data[SHIELDVAULT_PRO_PREVIEW_UNTIL_KEY] || 0);
+    SHIELDVAULT_PRO_ACTIVE = Boolean((paid && paid.active) || previewUntil > Date.now());
+    const rules = Array.isArray(data && data[SHIELDVAULT_ALLOWED_PATTERNS_KEY]) ? data[SHIELDVAULT_ALLOWED_PATTERNS_KEY] : [];
+    SHIELDVAULT_ALLOWED_PATTERN_KEYS = new Set(rules
+      .filter((rule) => rule && rule.detector && rule.domain)
+      .map((rule) => detectorRuleKey(rule.detector, rule.domain)));
+  } catch (_) {
+    SHIELDVAULT_PRO_ACTIVE = false;
+    SHIELDVAULT_ALLOWED_PATTERN_KEYS = new Set();
   }
 }
 
@@ -223,6 +278,16 @@ const DETECTORS = [
   { name: "HashiCorp Vault Token", pattern: /hvs\.[A-Za-z0-9]{24,}/ },
 ];
 
+const PRO_ONLY_DETECTOR_NAMES = new Set([
+  "Anthropic API Key",
+  "HuggingFace Token",
+  "Azure Storage Connection",
+  "Shopify Admin Token",
+  "Shopify Custom App Token",
+  "Shopify Shared Secret",
+  "HashiCorp Vault Token",
+]);
+
 // ================================
 // HIGH-RISK PASTE DOMAINS (reputationGuard)
 // ================================
@@ -309,6 +374,14 @@ function setValue(el, value) {
   }
 }
 
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ================================
 // DETECTION
 // ================================
@@ -320,6 +393,7 @@ function detectSecrets(text) {
   for (const detector of DETECTORS) {
     if (!isDetectorEnabled(detector.name)) continue;
     if (detector.pattern.test(text)) {
+      if (isDetectorPatternAllowed(detector.name)) continue;
       matches.push(detector.name);
     }
   }
@@ -363,13 +437,15 @@ function detectSecrets(text) {
 }
 
 function isDetectorEnabled(detectorName) {
+  if (PRO_ONLY_DETECTOR_NAMES.has(detectorName) && !SHIELDVAULT_PRO_ACTIVE) {
+    return false;
+  }
   const name = String(detectorName || "").toLowerCase();
   if (name.includes("token") || name.includes("pat")) {
     return SHIELDVAULT_SETTINGS.tokenGuard;
   }
   // New AI/cloud/infra tokens also fall under secretGuard
   return SHIELDVAULT_SETTINGS.secretGuard;
-}
 }
 
 // ================================
@@ -459,10 +535,14 @@ function showBlockOverlay(el, blockedText, detectorNames) {
         '<div style="font-size:11px;color:#8a8f9c;margin-bottom:10px">' +
           escHtml(label) +
         '</div>' +
+        '<div style="font-size:10px;color:#8a8f9c;margin-bottom:10px">Why: matched a protected secret pattern before submit.</div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end">' +
           '<button id="sv-undo-btn" style="padding:5px 10px;font-size:11px;border-radius:6px;' +
             'border:1px solid rgba(255,255,255,0.15);background:transparent;' +
             'color:#8a8f9c;cursor:pointer;font-family:system-ui,sans-serif">Undo (allow once)</button>' +
+          '<button id="sv-allow-pattern-btn" style="padding:5px 10px;font-size:11px;border-radius:6px;' +
+            'border:1px solid rgba(76,111,255,0.45);background:transparent;' +
+            'color:#8fb3ff;cursor:pointer;font-family:system-ui,sans-serif">Allow this pattern</button>' +
           '<button id="sv-dismiss-btn" style="padding:5px 10px;font-size:11px;border-radius:6px;' +
             'border:none;background:#4c6fff;color:#fff;cursor:pointer;font-family:system-ui,sans-serif">OK</button>' +
         '</div>' +
@@ -489,6 +569,17 @@ function showBlockOverlay(el, blockedText, detectorNames) {
     if (el && blockedText) {
       // Grant a content-hash-scoped bypass before restoring so the INPUT
       // event fired by setValue does not immediately re-block.
+      setSvBypass(el, blockedText);
+      setValue(el, blockedText);
+      el.focus();
+    }
+  });
+
+  overlay.querySelector("#sv-allow-pattern-btn").addEventListener("click", async function () {
+    clearTimeout(timer);
+    dismiss();
+    if (el && blockedText) {
+      await allowDetectorPatterns(detectorNames || []);
       setSvBypass(el, blockedText);
       setValue(el, blockedText);
       el.focus();
@@ -786,3 +877,16 @@ document.addEventListener(
 // ================================
 devLog("Content script loaded —", DETECTORS.length, "detectors active,", BEHAVIORAL_DETECTORS.length, "behavioral detectors active");
 loadShieldVaultSettings();
+loadShieldVaultRuntimeState();
+
+try {
+  chrome.storage.onChanged.addListener(function (changes, areaName) {
+    if (areaName !== "local") return;
+    if (changes[SHIELDVAULT_SETTINGS_KEY]) {
+      SHIELDVAULT_SETTINGS = mergeSettings(changes[SHIELDVAULT_SETTINGS_KEY].newValue || {});
+    }
+    if (changes[SHIELDVAULT_PRO_KEY] || changes[SHIELDVAULT_PRO_PREVIEW_UNTIL_KEY] || changes[SHIELDVAULT_ALLOWED_PATTERNS_KEY]) {
+      loadShieldVaultRuntimeState();
+    }
+  });
+} catch (_) {}

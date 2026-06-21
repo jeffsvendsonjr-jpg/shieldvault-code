@@ -114,13 +114,13 @@
     <div class="step-label" id="step-label">Step 1 of 4</div>
 
     <section data-step="1">
-      <h1>ShieldVault catches dangerous pastes before they leave your browser.</h1>
+      <h1>30-second ShieldVault setup.</h1>
       <p>It watches for secrets, tokens, private data, and risky paste events before you submit them into AI tools or web forms.</p>
       <p class="trust">Detection without possession. ShieldVault is designed not to store your content.</p>
     </section>
 
     <section data-step="2" class="hidden">
-      <h1>Choose protections</h1>
+      <h1>Choose your risk profile</h1>
 
       <div class="profile-row">
         <button type="button" class="profile-btn" id="profile-strict">🔒 Strict</button>
@@ -155,6 +155,13 @@
     <section data-step="4" class="hidden">
       <h1>Protection is active.</h1>
       <p>ShieldVault will stay quiet unless it sees something risky.</p>
+      <div class="section">
+        <h2>Setup checklist</h2>
+        <p class="hint">Completed in under 30 seconds.</p>
+        <div class="row"><span id="check-profile">✅ Risk profile selected</span></div>
+        <div class="row"><span id="check-core">✅ Core leak guards confirmed</span></div>
+        <div class="row"><span id="check-behavioral">✅ Behavioral warning preference saved</span></div>
+      </div>
       <div class="actions" style="margin-top:14px;">
         <button type="button" id="open-settings">Open settings</button>
         <button type="button" id="done" class="primary">Done</button>
@@ -192,8 +199,12 @@
       const demoResult = document.getElementById('demo-result');
       const openSettingsBtn = document.getElementById('open-settings');
       const doneBtn = document.getElementById('done');
+      const checkProfile = document.getElementById('check-profile');
+      const checkCore = document.getElementById('check-core');
+      const checkBehavioral = document.getElementById('check-behavioral');
       let step = 1;
       let onboardingSaved = false;
+      let selectedProfile = 'balanced';
 
       // ── Risk profile picker ────────────────────────────────────────────────
       const PROFILES = {
@@ -231,6 +242,7 @@
       function applyProfile(name) {
         const profile = PROFILES[name];
         if (!profile) return;
+        selectedProfile = name;
         document.getElementById('profile-desc').textContent = profile.desc;
         ['strict', 'balanced', 'light'].forEach(function (p) {
           document.getElementById('profile-' + p).classList.toggle('active', p === name);
@@ -275,7 +287,7 @@
 
       function render() {
         sections.forEach((s) => s.classList.toggle('hidden', Number(s.dataset.step) !== step));
-        stepLabel.textContent = 'Step ' + step + ' of 4';
+        stepLabel.textContent = 'Step ' + step + ' of 4 · ~30 sec';
         const hideNav = step === 4;
         backBtn.classList.toggle('hidden', step === 1 || hideNav);
         nextBtn.classList.toggle('hidden', hideNav);
@@ -284,6 +296,17 @@
         else if (step === 2) nextBtn.textContent = 'Continue';
         else if (step === 3) nextBtn.textContent = 'Continue';
         else nextBtn.textContent = 'Done';
+
+        if (step === 4) {
+          const current = currentSettingsFromUI();
+          checkProfile.textContent = '✅ Risk profile selected: ' + selectedProfile.charAt(0).toUpperCase() + selectedProfile.slice(1);
+          checkCore.textContent = current.secretGuard && current.passwordGuard
+            ? '✅ Core leak guards confirmed'
+            : '⚠ Review core leak guard toggles';
+          checkBehavioral.textContent = current.lateNightPostAlert || current.emotionalPostWarning
+            ? '✅ Behavioral warning preference saved (on)'
+            : '✅ Behavioral warning preference saved (off)';
+        }
       }
 
       runDemoBtn.addEventListener('click', function () {
@@ -293,6 +316,7 @@
       backBtn.addEventListener('click', function () {
         if (step > 1) {
           step -= 1;
+          applyProfile('balanced');
           render();
         }
       });

@@ -5,9 +5,12 @@
   const LEGACY_PRO_KEY = 'shieldvault_pro_v1';
   const PRO_STORAGE_KEY = 'shieldvault_pro';
   const LICENSE_KEY_STORAGE = 'shieldvault_license_key';
+  const PRO_PREVIEW_UNTIL_KEY = 'shieldvault_pro_preview_until';
+  const PRO_PREVIEW_USED_KEY = 'shieldvault_pro_preview_used';
   const PRO_REVALIDATE_TTL = 86400000; // 24 hours
   const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
   const STRIPE_KEY_TTL = 86400000; // 24 hours
+  const UI_UPDATED_DATE = '2026-06-21';
 
   function storageGet(keys) {
     return new Promise(function (resolve) {
@@ -67,15 +70,29 @@
       const detectorTags = (p.detectors || [])
         .map(function (d) { return '<span class="tag tag-detector">' + escHtml(d) + '</span>'; })
         .join('');
+      const reason = getPreventionReason(p);
       item.innerHTML =
         '<div class="proof-header">' +
           '<span class="proof-domain">' + escHtml(p.domain || 'unknown') + '</span>' +
           blockBadge +
           '<span class="proof-time">' + time + '</span>' +
         '</div>' +
-        (detectorTags ? '<div class="proof-details">' + detectorTags + '</div>' : '');
+        (detectorTags ? '<div class="proof-details">' + detectorTags + '</div>' : '') +
+        '<div class="proof-reason">' + escHtml(reason) + '</div>';
       container.appendChild(item);
     }
+  }
+
+  function getPreventionReason(p) {
+    const names = Array.isArray(p.detectors) ? p.detectors : [];
+    if (p.vector === 'behavioral') {
+      const top = names.slice(0, 2).join(', ') || 'tone/risk checks';
+      return 'Soft flag: paused before send due to ' + top + '. You can still choose to send.';
+    }
+    if (!names.length) {
+      return 'Hard block: detected sensitive content and removed it before it reached the page.';
+    }
+    return 'Hard block: matched ' + names.slice(0, 2).join(', ') + '. Content was wiped before submit.';
   }
 
   function escHtml(str) {
@@ -137,8 +154,24 @@
   }
 
   async function getProStatus() {
-    const data = await storageGet([PRO_STORAGE_KEY]);
-    return data[PRO_STORAGE_KEY] || null;
+    const data = await storageGet([PRO_STORAGE_KEY, PRO_PREVIEW_UNTIL_KEY, PRO_PREVIEW_USED_KEY]);
+    const paid = data[PRO_STORAGE_KEY] || null;
+    if (paid && paid.active) return Object.assign({}, paid, { source: 'paid' });
+    const previewUntil = Number(data[PRO_PREVIEW_UNTIL_KEY] || 0);
+    if (previewUntil > Date.now()) {
+      return {
+        active: true,
+        source: 'preview',
+        previewUntil: previewUntil,
+        previewUsed: Boolean(data[PRO_PREVIEW_USED_KEY]),
+      };
+    }
+    return {
+      active: false,
+      source: null,
+      previewUntil: previewUntil,
+      previewUsed: Boolean(data[PRO_PREVIEW_USED_KEY]),
+    };
   }
 
   async function clearProStatus() {
@@ -198,15 +231,36 @@
     const sectionUpgrade = document.getElementById('pro-section');
     const sectionActive = document.getElementById('pro-active');
     const sectionLicense = document.getElementById('license-input-section');
+    const proActiveText = document.getElementById('pro-active-text');
+    const resetBtn = document.getElementById('btn-reset-pro');
+    const previewBtn = document.getElementById('btn-preview');
+    const previewHelpText = document.getElementById('preview-help-text');
 
     if (pro && pro.active) {
       sectionUpgrade.style.display = 'none';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = '';
+      if (pro.source === 'preview') {
+        const until = new Date(Number(pro.previewUntil || Date.now())).toLocaleDateString();
+        proActiveText.textContent = 'Pro preview active until ' + until + '.';
+        resetBtn.style.display = 'none';
+      } else {
+        proActiveText.textContent = 'Thanks for supporting ShieldVault!';
+        resetBtn.style.display = '';
+      }
     } else {
       sectionUpgrade.style.display = '';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = 'none';
+      if (previewBtn) {
+        const canStart = !pro.previewUsed;
+        previewBtn.disabled = !canStart;
+        if (previewHelpText) {
+          previewHelpText.textContent = canStart
+            ? 'One-time preview. No payment required.'
+            : 'Preview already used on this browser profile.';
+        }
+      }
     }
   }
 
@@ -309,6 +363,26 @@
 
   document.getElementById('btn-monthly').addEventListener('click', function () {
     startCheckout('monthly', this, '$4.99/mo');
+  });
+
+  document.getElementById('btn-preview').addEventListener('click', async function () {
+    const btn = this;
+    btn.disabled = true;
+    try {
+      const pro = await getProStatus();
+      if (pro.previewUsed) {
+        await applyProState();
+        return;
+      }
+      const previewUntil = Date.now() + (7 * 24 * 60 * 60 * 1000);
+      await storageSet({
+        [PRO_PREVIEW_UNTIL_KEY]: previewUntil,
+        [PRO_PREVIEW_USED_KEY]: true,
+      });
+      await applyProState();
+    } catch (_) {
+      btn.disabled = false;
+    }
   });
 
   // ── License key flow ─────────────────────────────────────────────────────────
@@ -466,6 +540,8 @@
     const manifest = chrome.runtime.getManifest();
     const vEl = document.getElementById('sv-version');
     if (vEl && manifest.version) vEl.textContent = 'ShieldVault v' + manifest.version;
+    const dEl = document.getElementById('sv-updated');
+    if (dEl) dEl.textContent = 'Updated ' + UI_UPDATED_DATE;
   } catch (_) {}
 
   // ── How it works link ─────────────────────────────────────────────────────
