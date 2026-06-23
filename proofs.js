@@ -10,7 +10,8 @@
   const PRO_REVALIDATE_TTL = 86400000; // 24 hours
   const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
   const STRIPE_KEY_TTL = 86400000; // 24 hours
-  const UI_UPDATED_DATE = '2026-06-22';
+  const MASTER_TOGGLE_KEY = 'shieldvault_enabled';
+  const UI_UPDATED_DATE = '2026-06-23';
 
   function storageGet(keys) {
     return new Promise(function (resolve) {
@@ -67,12 +68,22 @@
     /^https:\/\/gemini\.google\.com\//,
     /^https:\/\/perplexity\.ai\//,
     /^https:\/\/copilot\.microsoft\.com\//,
+    /^https:\/\/grok\.com\//,
+    /^https:\/\/chat\.mistral\.ai\//,
+    /^https:\/\/www\.meta\.ai\//,
+    /^https:\/\/poe\.com\//,
+    /^https:\/\/chat\.deepseek\.com\//,
     /^https:\/\/[^/]*\.linkedin\.com\//,
     /^https:\/\/[^/]*\.reddit\.com\//,
     /^https:\/\/twitter\.com\//,
     /^https:\/\/x\.com\//,
     /^https:\/\/mail\.google\.com\//,
+    /^https:\/\/docs\.google\.com\//,
+    /^https:\/\/colab\.research\.google\.com\//,
+    /^https:\/\/notebooklm\.google\.com\//,
     /^https:\/\/outlook\.live\.com\//,
+    /^https:\/\/outlook\.office\.com\//,
+    /^https:\/\/outlook\.office365\.com\//,
     /^https:\/\/pastebin\.com\//,
     /^https:\/\/hastebin\.com\//,
     /^https:\/\/paste\.ee\//,
@@ -83,19 +94,29 @@
   function updateStatusChip() {
     const dotEl = document.getElementById('status-dot');
     const labelEl = document.getElementById('status-label');
+    const masterToggleEl = document.getElementById('master-toggle');
     if (!dotEl || !labelEl) return;
     try {
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (chrome.runtime.lastError) {
-          dotEl.className = 'status-dot status-dot--inactive';
-          labelEl.textContent = 'Not monitoring';
+      storageGet([MASTER_TOGGLE_KEY]).then(function (data) {
+        const enabled = data[MASTER_TOGGLE_KEY] !== false; // default true
+        if (masterToggleEl) masterToggleEl.checked = enabled;
+        if (!enabled) {
+          dotEl.className = 'status-dot status-dot--disabled';
+          labelEl.textContent = 'Protection paused';
           return;
         }
-        const tab = tabs && tabs[0];
-        const url = (tab && tab.url) || '';
-        const monitored = Boolean(url && MONITORED_PATTERNS.some(function (re) { return re.test(url); }));
-        dotEl.className = 'status-dot ' + (monitored ? 'status-dot--active' : 'status-dot--inactive');
-        labelEl.textContent = monitored ? 'Active on this page' : 'Not monitoring this page';
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+          if (chrome.runtime.lastError) {
+            dotEl.className = 'status-dot status-dot--inactive';
+            labelEl.textContent = 'Not monitoring';
+            return;
+          }
+          const tab = tabs && tabs[0];
+          const url = (tab && tab.url) || '';
+          const monitored = Boolean(url && MONITORED_PATTERNS.some(function (re) { return re.test(url); }));
+          dotEl.className = 'status-dot ' + (monitored ? 'status-dot--active' : 'status-dot--inactive');
+          labelEl.textContent = monitored ? 'Active on this page' : 'Not monitoring this page';
+        });
       });
     } catch (_) {
       dotEl.className = 'status-dot status-dot--inactive';
@@ -104,6 +125,17 @@
   }
 
   updateStatusChip();
+
+  // ── Master toggle ─────────────────────────────────────────────────────────────
+
+  const masterToggleEl = document.getElementById('master-toggle');
+  if (masterToggleEl) {
+    masterToggleEl.addEventListener('change', function () {
+      storageSet({ [MASTER_TOGGLE_KEY]: masterToggleEl.checked }).then(function () {
+        updateStatusChip();
+      }).catch(function () {});
+    });
+  }
 
   // ── Keyboard shortcut hint ────────────────────────────────────────────────────
 

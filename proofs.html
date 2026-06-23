@@ -12,9 +12,15 @@
     <header>
       <div class="header-top">
         <h1>ShieldVault</h1>
-        <div class="status-chip" id="status-chip">
-          <span class="status-dot" id="status-dot"></span>
-          <span class="status-label" id="status-label">Checking…</span>
+        <div class="header-controls">
+          <div class="status-chip" id="status-chip">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-label" id="status-label">Checking…</span>
+          </div>
+          <span class="toggle-wrap" title="Enable or disable ShieldVault protection">
+            <input type="checkbox" id="master-toggle" class="toggle-input" checked>
+            <span class="toggle-track"></span>
+          </span>
         </div>
       </div>
       <nav class="tabs" role="tablist">
@@ -50,6 +56,7 @@
 
       <div class="changelog">
         <div class="changelog-title">Changelog</div>
+        <div class="changelog-item"><strong>v1.7.0</strong> — master on/off toggle, expanded site coverage (Grok, Mistral, Meta AI, Poe, DeepSeek, Google Docs, Colab, NotebookLM, enterprise Outlook).</div>
         <div class="changelog-item"><strong>v1.6.6</strong> — tabbed UI, status chip, expandable explanations, badge count.</div>
         <div class="changelog-item"><strong>v1.6.5</strong> — detection settings, Pro licensing flow, persistent proof history.</div>
       </div>

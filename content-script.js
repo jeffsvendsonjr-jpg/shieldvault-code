@@ -9,6 +9,7 @@
 // ================================
 const DEV = false;
 const SHIELDVAULT_SETTINGS_KEY = "shieldvaultSettings";
+const SHIELDVAULT_ENABLED_KEY = "shieldvault_enabled";
 const SHIELDVAULT_DEFAULT_SETTINGS = {
   secretGuard: true,
   tokenGuard: true,
@@ -31,6 +32,7 @@ const SHIELDVAULT_ALLOWED_PATTERNS_KEY = "shieldvault_allowed_patterns";
 const SHIELDVAULT_ALLOWED_PATTERNS_MAX = 120;
 let SHIELDVAULT_PRO_ACTIVE = false;
 let SHIELDVAULT_ALLOWED_PATTERN_KEYS = new Set();
+let SHIELDVAULT_ENABLED = true;
 
 // ================================
 // DEV LOGGING
@@ -127,10 +129,12 @@ function mergeSettings(raw) {
 
 async function loadShieldVaultSettings() {
   try {
-    const data = await chrome.storage.local.get([SHIELDVAULT_SETTINGS_KEY]);
+    const data = await chrome.storage.local.get([SHIELDVAULT_SETTINGS_KEY, SHIELDVAULT_ENABLED_KEY]);
     SHIELDVAULT_SETTINGS = mergeSettings(data && data[SHIELDVAULT_SETTINGS_KEY]);
+    SHIELDVAULT_ENABLED = (data && data[SHIELDVAULT_ENABLED_KEY]) !== false; // default true
   } catch (_) {
     SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
+    SHIELDVAULT_ENABLED = true;
   }
 }
 
@@ -690,6 +694,9 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
 // BLOCKING LOGIC
 // ================================
 function handleDetection(text, el, vector, event) {
+  // Master off toggle — all detection disabled
+  if (!SHIELDVAULT_ENABLED) return false;
+
   // --- Hard block: secrets ---
   const secretMatches = detectSecrets(text);
   if (secretMatches.length > 0) {
@@ -798,6 +805,7 @@ document.addEventListener(
 document.addEventListener(
   "input",
   (e) => {
+    if (!SHIELDVAULT_ENABLED) return;
     const el = e.target;
     if (!el) return;
 
@@ -841,6 +849,7 @@ document.addEventListener(
 document.addEventListener(
   "drop",
   (e) => {
+    if (!SHIELDVAULT_ENABLED) return;
     if (!SHIELDVAULT_SETTINGS.secretGuard) return;
 
     const el = e.target;
@@ -884,6 +893,9 @@ try {
     if (areaName !== "local") return;
     if (changes[SHIELDVAULT_SETTINGS_KEY]) {
       SHIELDVAULT_SETTINGS = mergeSettings(changes[SHIELDVAULT_SETTINGS_KEY].newValue || {});
+    }
+    if (changes[SHIELDVAULT_ENABLED_KEY]) {
+      SHIELDVAULT_ENABLED = changes[SHIELDVAULT_ENABLED_KEY].newValue !== false;
     }
     if (changes[SHIELDVAULT_PRO_KEY] || changes[SHIELDVAULT_PRO_PREVIEW_UNTIL_KEY] || changes[SHIELDVAULT_ALLOWED_PATTERNS_KEY]) {
       loadShieldVaultRuntimeState();
