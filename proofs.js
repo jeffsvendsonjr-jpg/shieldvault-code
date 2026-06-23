@@ -2,7 +2,6 @@
   'use strict';
 
   const API_BASE = 'https://shieldvault.site';
-  const PRO_KEY = 'shieldvault_pro_v1';
   const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
   const STRIPE_KEY_TTL = 86400000; // 24 hours
 
@@ -82,28 +81,48 @@
   // ── Pro status ───────────────────────────────────────────────────────────────
 
   function getProStatus() {
-    try {
-      const raw = localStorage.getItem(PRO_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch { return null; }
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
+        const isPro = result.shieldvault_pro === true;
+        const expiry = result.shieldvault_pro_expiry || 0;
+        const now = Date.now();
+
+        if (!isPro || now > expiry) {
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    });
   }
 
   function saveProStatus(data) {
-    localStorage.setItem(PRO_KEY, JSON.stringify(data));
+    const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
+    chrome.storage.local.set({
+      shieldvault_pro: true,
+      shieldvault_pro_expiry: expiryTime,
+      shieldvault_license_key: data.key || '',
+      shieldvault_tier: data.tier || 'plus',
+    });
   }
 
   function clearProStatus() {
-    localStorage.removeItem(PRO_KEY);
+    chrome.storage.local.remove([
+      "shieldvault_pro",
+      "shieldvault_pro_expiry",
+      "shieldvault_license_key",
+      "shieldvault_tier",
+    ]);
   }
 
-  function applyProState() {
-    const pro = getProStatus();
+  async function applyProState() {
+    const isPro = await getProStatus();
     const sectionUpgrade = document.getElementById('pro-section');
     const sectionActive = document.getElementById('pro-active');
     const sectionLicense = document.getElementById('license-input-section');
 
-    if (pro && pro.active) {
+    if (isPro) {
       sectionUpgrade.style.display = 'none';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = '';
@@ -126,7 +145,9 @@
     _stripeKeyPromise = (async function () {
       // Check cache first
       try {
-        const cached = JSON.parse(localStorage.getItem(STRIPE_KEY_CACHE) || 'null');
+        const cached = await new Promise((resolve) => {
+          chrome.storage.local.get([STRIPE_KEY_CACHE], (result) => resolve(result[STRIPE_KEY_CACHE] || null));
+        });
         if (cached && cached.pk && Date.now() - cached.ts < STRIPE_KEY_TTL) {
           return cached.pk;
         }
@@ -141,7 +162,7 @@
 
       // Cache for 24 h
       try {
-        localStorage.setItem(STRIPE_KEY_CACHE, JSON.stringify({ pk, ts: Date.now() }));
+        chrome.storage.local.set({ [STRIPE_KEY_CACHE]: { pk, ts: Date.now() } });
       } catch (_) {}
 
       return pk;
@@ -226,7 +247,9 @@
         const body = await res.json().catch(function () { return {}; });
         throw new Error(body.error || 'Invalid license key');
       }
-      saveProStatus({ active: true, key, activatedAt: Date.now() });
+      const data = await res.json();
+      if (!data.valid) throw new Error('Invalid license key');
+      saveProStatus({ key, tier: data.tier || 'plus' });
       applyProState();
     } catch (err) {
       errorEl.textContent = err.message || 'Activation failed. Please try again.';

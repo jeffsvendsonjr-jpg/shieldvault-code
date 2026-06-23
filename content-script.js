@@ -24,9 +24,18 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
 let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 
 // ================================
-// TIER (assumed plus for behavioral modal)
+// TIER — read from storage; default to basic
 // ================================
-const USER_TIER = "plus";
+let USER_TIER = "basic";
+chrome.storage.local.get(["shieldvault_tier"], (result) => {
+  USER_TIER = result.shieldvault_tier || "basic";
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.shieldvault_tier) {
+    USER_TIER = changes.shieldvault_tier.newValue || "basic";
+  }
+});
 
 // ================================
 // DEV LOGGING
@@ -503,7 +512,9 @@ function handleDetection(text, el, vector, event) {
       event.stopImmediatePropagation();
     }
 
-    showBehavioralModal(text, el, warnings, warningTypes);
+    if (USER_TIER === "plus") {
+      showBehavioralModal(text, el, warnings, warningTypes);
+    }
     devWarn(`Behavioral warning: ${warnings.join(", ")} via ${vector}`);
     return true;
   }
@@ -593,7 +604,7 @@ document.addEventListener(
     if (el.dataset.shieldvaultBypass === "true") return;
 
     const behaviorMatches = detectBehaviors(value);
-    if (behaviorMatches.length > 0) {
+    if (behaviorMatches.length > 0 && USER_TIER === "plus") {
       showBehavioralModal(value, el, behaviorMatches, ["emotional"]);
       devWarn(`Fallback behavioral warning: ${behaviorMatches.join(", ")}`);
     }
