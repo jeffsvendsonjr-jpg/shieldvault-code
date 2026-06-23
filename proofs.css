@@ -23,12 +23,12 @@ body {
   padding: 12px;
   background: var(--bg);
   color: var(--text);
-  width: 320px;
+  width: 380px;
 }
 
 h1 {
   font-size: 14px;
-  margin: 0 0 4px;
+  margin: 0;
   font-weight: 600;
 }
 
@@ -120,10 +120,10 @@ button:disabled {
 }
 
 .proof-list {
-  display: none;
+  display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 200px;
+  max-height: 280px;
   overflow-y: auto;
 }
 
@@ -488,51 +488,179 @@ footer {
   color: #fbbf24;
 }
 
-/* ── Settings section ────────────────────────────────────────────────────── */
+/* ── Header ─────────────────────────────────────────────────────────────────── */
 
-.settings-section {
-  margin-top: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.settings-header {
+.header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
-  padding: 8px 12px;
-  background: var(--panel);
-  border: none;
+  margin-bottom: 8px;
+}
+
+/* ── Status chip ──────────────────────────────────────────────────────────── */
+
+.status-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
   color: var(--muted);
-  font-size: 11px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.status-dot--active {
+  background: var(--success);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.22);
+}
+
+.status-dot--inactive {
+  background: var(--muted);
+}
+
+/* ── Tab navigation ───────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 500;
+  padding: 6px 14px;
   cursor: pointer;
-  text-align: left;
+  border-radius: 0;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
 }
 
-.settings-header:hover {
+.tab-btn:hover {
   color: var(--text);
-  border-color: transparent;
+  border-bottom-color: transparent;
 }
 
-.chevron {
-  font-size: 16px;
-  line-height: 1;
-  transition: transform 0.2s ease;
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-pro-dot {
   display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: var(--pro-gold);
+  border-radius: 50%;
+  margin-left: 3px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
 }
 
-.chevron.open {
-  transform: rotate(90deg);
+/* ── Settings search ──────────────────────────────────────────────────────── */
+
+.settings-search-wrap {
+  padding: 4px 0 8px;
 }
 
-.settings-body {
-  padding: 6px 12px 12px;
+.settings-search {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 11px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.settings-search:focus {
+  border-color: var(--accent);
+}
+
+.settings-search::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.settings-group {
+  margin-bottom: 4px;
+}
+
+#settings-body-inner {
+  padding: 0;
+}
+
+/* ── Why? expand button ───────────────────────────────────────────────────── */
+
+.why-btn {
+  margin-top: 5px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 10px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.7;
+}
+
+.why-btn:hover {
+  opacity: 1;
+  border: none;
+}
+
+.proof-reason--hidden {
+  display: none;
+}
+
+/* ── Pro stats line ───────────────────────────────────────────────────────── */
+
+.pro-stats-line {
+  font-size: 10px;
+  color: var(--pro-gold);
+  margin: 0 0 10px;
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
+/* ── Keyboard hint ────────────────────────────────────────────────────────── */
+
+.keyboard-hint {
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.55;
+  text-align: center;
+}
+
+kbd {
+  display: inline-block;
+  font-family: system-ui, sans-serif;
+  font-size: 9px;
+  padding: 1px 4px;
   background: var(--panel);
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
 }
+
+/* ── Settings section ────────────────────────────────────────────────────── */
 
 .settings-group-label {
   font-size: 9px;
@@ -542,10 +670,6 @@ footer {
   color: var(--muted);
   opacity: 0.7;
   margin: 10px 0 4px;
-}
-
-.settings-group-label:first-child {
-  margin-top: 4px;
 }
 
 .toggle-row {

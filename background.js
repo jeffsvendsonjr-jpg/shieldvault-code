@@ -52,6 +52,19 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 const SV_PROOFS_KEY = 'shieldvault_proofs';
 const SV_MAX_PROOFS = 100;
+const SV_BADGE_DATE_KEY = 'shieldvault_badge_date';
+const SV_BADGE_COUNT_KEY = 'shieldvault_badge_count';
+
+async function incrementBadge() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const data = await chrome.storage.local.get([SV_BADGE_DATE_KEY, SV_BADGE_COUNT_KEY]);
+    const count = (data[SV_BADGE_DATE_KEY] === today ? (data[SV_BADGE_COUNT_KEY] || 0) : 0) + 1;
+    await chrome.storage.local.set({ [SV_BADGE_DATE_KEY]: today, [SV_BADGE_COUNT_KEY]: count });
+    chrome.action.setBadgeText({ text: String(count) });
+    chrome.action.setBadgeBackgroundColor({ color: '#4c6fff' });
+  } catch (_) {}
+}
 let _svProofs = [];
 
 (async function loadSvProofs() {
@@ -80,6 +93,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     _svProofs.unshift(proof);
     if (_svProofs.length > SV_MAX_PROOFS) _svProofs.length = SV_MAX_PROOFS;
     chrome.storage.local.set({ [SV_PROOFS_KEY]: _svProofs }).catch(() => {});
+    incrementBadge();
     return false;
   }
 

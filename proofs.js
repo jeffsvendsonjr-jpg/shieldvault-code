@@ -10,7 +10,7 @@
   const PRO_REVALIDATE_TTL = 86400000; // 24 hours
   const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
   const STRIPE_KEY_TTL = 86400000; // 24 hours
-  const UI_UPDATED_DATE = '2026-06-21';
+  const UI_UPDATED_DATE = '2026-06-22';
 
   function storageGet(keys) {
     return new Promise(function (resolve) {
@@ -38,7 +38,86 @@
     });
   }
 
-  // ── Proof list ──────────────────────────────────────────────────────────────
+  // ── Tab navigation ───────────────────────────────────────────────────────────
+
+  function switchTab(tab) {
+    ['activity', 'settings', 'pro'].forEach(function (key) {
+      const panel = document.getElementById('tab-' + key);
+      if (panel) panel.style.display = key === tab ? '' : 'none';
+    });
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+      const isActive = btn.dataset.tab === tab;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+    if (tab === 'settings') loadAndRenderDetectSettings();
+    if (tab === 'pro') updateProStats();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
+  });
+
+  // ── Status chip ───────────────────────────────────────────────────────────────
+
+  const MONITORED_PATTERNS = [
+    /^https:\/\/chat\.openai\.com\//,
+    /^https:\/\/chatgpt\.com\//,
+    /^https:\/\/claude\.ai\//,
+    /^https:\/\/gemini\.google\.com\//,
+    /^https:\/\/perplexity\.ai\//,
+    /^https:\/\/copilot\.microsoft\.com\//,
+    /^https:\/\/[^/]*\.linkedin\.com\//,
+    /^https:\/\/[^/]*\.reddit\.com\//,
+    /^https:\/\/twitter\.com\//,
+    /^https:\/\/x\.com\//,
+    /^https:\/\/mail\.google\.com\//,
+    /^https:\/\/outlook\.live\.com\//,
+    /^https:\/\/pastebin\.com\//,
+    /^https:\/\/hastebin\.com\//,
+    /^https:\/\/paste\.ee\//,
+    /^https:\/\/rentry\.co\//,
+    /^https:\/\/dpaste\.com\//,
+  ];
+
+  function updateStatusChip() {
+    const dotEl = document.getElementById('status-dot');
+    const labelEl = document.getElementById('status-label');
+    if (!dotEl || !labelEl) return;
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (chrome.runtime.lastError) {
+          dotEl.className = 'status-dot status-dot--inactive';
+          labelEl.textContent = 'Not monitoring';
+          return;
+        }
+        const tab = tabs && tabs[0];
+        const url = (tab && tab.url) || '';
+        const monitored = Boolean(url && MONITORED_PATTERNS.some(function (re) { return re.test(url); }));
+        dotEl.className = 'status-dot ' + (monitored ? 'status-dot--active' : 'status-dot--inactive');
+        labelEl.textContent = monitored ? 'Active on this page' : 'Not monitoring this page';
+      });
+    } catch (_) {
+      dotEl.className = 'status-dot status-dot--inactive';
+      labelEl.textContent = 'Protected';
+    }
+  }
+
+  updateStatusChip();
+
+  // ── Keyboard shortcut hint ────────────────────────────────────────────────────
+
+  try {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const shortcutEl = document.getElementById('kbd-shortcut-text');
+    if (shortcutEl) {
+      shortcutEl.innerHTML = isMac
+        ? '&#8963; Open anywhere: <kbd>&#8984;</kbd>+<kbd>&#8679;</kbd>+<kbd>S</kbd>'
+        : '&#9000; Open anywhere: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>';
+    }
+  } catch (_) {}
+
+  // ── Proof list ───────────────────────────────────────────────────────────────
 
   let proofs = [];
 
@@ -55,7 +134,7 @@
     }
 
     empty.style.display = 'none';
-    container.style.display = '';
+    container.style.display = 'flex';
     count.textContent = proofs.length + (proofs.length === 1 ? ' prevention' : ' preventions');
 
     container.innerHTML = '';
@@ -78,10 +157,24 @@
           '<span class="proof-time">' + time + '</span>' +
         '</div>' +
         (detectorTags ? '<div class="proof-details">' + detectorTags + '</div>' : '') +
-        '<div class="proof-reason">' + escHtml(reason) + '</div>';
+        '<button class="why-btn" aria-expanded="false">Why?</button>' +
+        '<div class="proof-reason proof-reason--hidden">' + escHtml(reason) + '</div>';
       container.appendChild(item);
     }
   }
+
+  // Event delegation — "Why?" toggle on each proof item
+  document.getElementById('proof-list').addEventListener('click', function (e) {
+    const btn = e.target.closest('.why-btn');
+    if (!btn) return;
+    const item = btn.closest('.proof-item');
+    const reasonEl = item && item.querySelector('.proof-reason');
+    if (!reasonEl) return;
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    reasonEl.classList.toggle('proof-reason--hidden', expanded);
+    btn.setAttribute('aria-expanded', String(!expanded));
+    btn.textContent = expanded ? 'Why?' : 'Hide';
+  });
 
   function getPreventionReason(p) {
     const names = Array.isArray(p.detectors) ? p.detectors : [];
@@ -108,9 +201,9 @@
     renderProofs();
   });
 
-  // Ask background for stored proofs (best-effort; extension may not have any)
   const FREE_HISTORY_LIMIT = 25;
   const PRO_HISTORY_LIMIT = 100;
+
   try {
     chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_PROOFS' }, function (response) {
       if (chrome.runtime.lastError) return;
@@ -119,6 +212,7 @@
           const limit = (pro && pro.active) ? PRO_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
           proofs = response.proofs.slice(0, limit);
           renderProofs();
+          updateProStats();
         });
       }
     });
@@ -138,13 +232,28 @@
         });
         if (proofs.length > limit) proofs.length = limit;
         renderProofs();
+        updateProStats();
       });
     });
   } catch (_) {}
 
   renderProofs();
 
-  // ── Pro status ───────────────────────────────────────────────────────────────
+  // ── Pro stats line ────────────────────────────────────────────────────────────
+
+  function updateProStats() {
+    const line = document.getElementById('pro-stats-line');
+    if (!line) return;
+    const total = proofs.length;
+    if (total > 0) {
+      line.textContent = 'You\'ve blocked ' + total + (total === 1 ? ' item' : ' items') + ' on the free plan. Pro unlocks 4× the history.';
+      line.style.display = '';
+    } else {
+      line.style.display = 'none';
+    }
+  }
+
+  // ── Pro status ────────────────────────────────────────────────────────────────
 
   function normalizeLicenseKey(raw) {
     return String(raw || '')
@@ -235,11 +344,13 @@
     const resetBtn = document.getElementById('btn-reset-pro');
     const previewBtn = document.getElementById('btn-preview');
     const previewHelpText = document.getElementById('preview-help-text');
+    const proTabDot = document.getElementById('tab-pro-dot');
 
     if (pro && pro.active) {
       sectionUpgrade.style.display = 'none';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = '';
+      if (proTabDot) proTabDot.style.display = 'none';
       if (pro.source === 'preview') {
         const until = new Date(Number(pro.previewUntil || Date.now())).toLocaleDateString();
         proActiveText.textContent = 'Pro preview active until ' + until + '.';
@@ -252,6 +363,7 @@
       sectionUpgrade.style.display = '';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = 'none';
+      if (proTabDot) proTabDot.style.display = '';
       if (previewBtn) {
         const canStart = !pro.previewUsed;
         previewBtn.disabled = !canStart;
@@ -270,8 +382,8 @@
     await applyProState();
   })();
 
-  // ── Behavioral upgrade nudge ─────────────────────────────────────────────────
-  // After 5+ preventions, pulse the Pro section to catch the user at peak value.
+  // ── Behavioral upgrade nudge ──────────────────────────────────────────────────
+  // After 5+ preventions, switch to the Pro tab to surface the upgrade at peak value.
 
   try {
     chrome.storage.local.get(['shieldvault_behavioral_uses'], function (result) {
@@ -282,14 +394,14 @@
           const proSection = document.getElementById('pro-section');
           if (proSection && proSection.style.display !== 'none') {
             proSection.classList.add('pro-section--nudge');
-            proSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            switchTab('pro');
           }
         }
       });
     });
   } catch (_) {}
 
-  // ── Stripe publishable key — lazy + cached ───────────────────────────────────
+  // ── Stripe publishable key — lazy + cached ────────────────────────────────────
 
   let _stripeKeyPromise = null;
 
@@ -297,7 +409,6 @@
     if (_stripeKeyPromise) return _stripeKeyPromise;
 
     _stripeKeyPromise = (async function () {
-      // Check cache first
       try {
         const cached = JSON.parse(localStorage.getItem(STRIPE_KEY_CACHE) || 'null');
         if (cached && cached.pk && Date.now() - cached.ts < STRIPE_KEY_TTL) {
@@ -305,14 +416,12 @@
         }
       } catch (_) {}
 
-      // Fetch from server only when actually needed
       const res = await fetch(API_BASE + '/api/stripe/publishable-key', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load payment info (' + res.status + ')');
       const data = await res.json();
       const pk = data.publishableKey || data.publishable_key;
       if (!pk) throw new Error('Invalid payment configuration');
 
-      // Cache for 24 h
       try {
         localStorage.setItem(STRIPE_KEY_CACHE, JSON.stringify({ pk, ts: Date.now() }));
       } catch (_) {}
@@ -320,13 +429,12 @@
       return pk;
     })();
 
-    // Don't cache a rejected promise — allow retry on next click
     _stripeKeyPromise.catch(function () { _stripeKeyPromise = null; });
 
     return _stripeKeyPromise;
   }
 
-  // ── Upgrade button ───────────────────────────────────────────────────────────
+  // ── Upgrade buttons ───────────────────────────────────────────────────────────
 
   async function startCheckout(plan, btn, originalLabel) {
     btn.disabled = true;
@@ -385,7 +493,7 @@
     }
   });
 
-  // ── License key flow ─────────────────────────────────────────────────────────
+  // ── License key flow ──────────────────────────────────────────────────────────
 
   const licenseInput = document.getElementById('license-key-input');
   const licenseError = document.getElementById('license-error');
@@ -473,7 +581,7 @@
     await applyProState();
   });
 
-  // ── Detection Settings ────────────────────────────────────────────────────────
+  // ── Detection Settings ─────────────────────────────────────────────────────────
 
   const DETECT_SETTINGS_KEY = 'shieldvaultSettings';
   const DETECT_DEFAULTS = {
@@ -518,15 +626,6 @@
     } catch (_) {}
   }
 
-  document.getElementById('settings-header-btn').addEventListener('click', function () {
-    const body = document.getElementById('settings-body');
-    const chevron = document.getElementById('settings-chevron');
-    const isOpen = body.style.display !== 'none';
-    body.style.display = isOpen ? 'none' : '';
-    chevron.classList.toggle('open', !isOpen);
-    this.setAttribute('aria-expanded', String(!isOpen));
-  });
-
   for (const key of DETECT_TOGGLE_KEYS) {
     const el = document.getElementById('set-' + key);
     if (el) el.addEventListener('change', saveDetectSettings);
@@ -534,7 +633,29 @@
 
   loadAndRenderDetectSettings();
 
-  // ── Version display ───────────────────────────────────────────────────────
+  // ── Settings search/filter ─────────────────────────────────────────────────────
+
+  const settingsFilter = document.getElementById('settings-filter');
+  if (settingsFilter) {
+    settingsFilter.addEventListener('input', function () {
+      const q = this.value.toLowerCase().trim();
+      const groups = document.querySelectorAll('#settings-body-inner .settings-group');
+      groups.forEach(function (group) {
+        const rows = group.querySelectorAll('.toggle-row');
+        let anyVisible = false;
+        rows.forEach(function (row) {
+          const labelSpan = row.querySelector('span:first-child');
+          const text = (labelSpan ? labelSpan.textContent : row.textContent).toLowerCase();
+          const visible = !q || text.includes(q);
+          row.style.display = visible ? '' : 'none';
+          if (visible) anyVisible = true;
+        });
+        group.style.display = (!q || anyVisible) ? '' : 'none';
+      });
+    });
+  }
+
+  // ── Version display ────────────────────────────────────────────────────────────
 
   try {
     const manifest = chrome.runtime.getManifest();
@@ -544,7 +665,7 @@
     if (dEl) dEl.textContent = 'Updated ' + UI_UPDATED_DATE;
   } catch (_) {}
 
-  // ── How it works link ─────────────────────────────────────────────────────
+  // ── How it works link ──────────────────────────────────────────────────────────
 
   const howItWorksLink = document.getElementById('how-it-works-link');
   if (howItWorksLink) {

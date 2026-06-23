@@ -4,131 +4,152 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ShieldVault — Proofs of Prevention</title>
+  <title>ShieldVault</title>
   <link rel="stylesheet" href="proofs.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>ShieldVault</h1>
-      <p class="subtitle">Hard blocks secrets. Soft flags tone. 100% local on your device.</p>
+      <div class="header-top">
+        <h1>ShieldVault</h1>
+        <div class="status-chip" id="status-chip">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="status-label" id="status-label">Checking…</span>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-activity" data-tab="activity">Activity</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-settings" data-tab="settings">Settings</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pro" data-tab="pro">
+          Pro<span class="tab-pro-dot" id="tab-pro-dot"></span>
+        </button>
+      </nav>
     </header>
 
-    <div class="value-bar">
-      <span class="vb-item vb-hard">🛡 Hard blocks secrets</span>
-      <span class="vb-item vb-soft">⚠ Soft flags tone</span>
-      <span class="vb-item vb-local">🔒 100% local</span>
-    </div>
-
-    <div class="quick-trust">
-      <strong>Hard Block</strong> wipes detected secrets before send.<br>
-      <strong>Soft Flag</strong> pauses risky tone so you can edit or send anyway.
-    </div>
-
-    <div class="notice">
-      <strong>Local storage only:</strong> Proofs persist across browser restarts (free: last 25 events, Pro: up to 100). No secrets are stored—only metadata
-      (domain, time, detection type).
-    </div>
-
-    <div class="controls">
-      <span class="count" id="count">—</span>
-      <button class="clear-btn" id="clear-btn">Clear History</button>
-    </div>
-
-    <div id="proof-container">
-      <div class="empty-state" id="empty-state">
-        <div class="icon">&#10003;</div>
-        <p>No preventions recorded yet</p>
-        <p class="hint">Each prevention shows what triggered and why ShieldVault intervened.</p>
+    <!-- ── Activity Tab ────────────────────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-activity" role="tabpanel">
+      <div class="value-bar">
+        <span class="vb-item vb-hard">🛡 Hard blocks secrets</span>
+        <span class="vb-item vb-soft">⚠ Soft flags tone</span>
+        <span class="vb-item vb-local">🔒 100% local</span>
       </div>
-      <div class="proof-list" id="proof-list"></div>
-    </div>
 
-    <!-- Settings Section -->
-    <div class="settings-section" id="settings-section">
-      <button class="settings-header" id="settings-header-btn" aria-expanded="false">
-        <span>&#9881; Detection Settings</span>
-        <span class="chevron" id="settings-chevron">&#8250;</span>
-      </button>
-      <div class="settings-body" id="settings-body" style="display:none;">
-        <div class="settings-group-label">Secrets &amp; Credentials</div>
-        <label class="toggle-row"><span>API keys &amp; secrets</span><span class="toggle-wrap"><input type="checkbox" id="set-secretGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Auth tokens</span><span class="toggle-wrap"><input type="checkbox" id="set-tokenGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Passwords</span><span class="toggle-wrap"><input type="checkbox" id="set-passwordGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Seed &amp; recovery phrases</span><span class="toggle-wrap"><input type="checkbox" id="set-recoveryPhraseGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <div class="settings-group-label">Personal &amp; Financial</div>
-        <label class="toggle-row"><span>Credit card numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-creditCardGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Phone numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-phoneGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Bank account info</span><span class="toggle-wrap"><input type="checkbox" id="set-bankAccountGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Personal info (SSN, DOB)</span><span class="toggle-wrap"><input type="checkbox" id="set-privateInfoGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <div class="settings-group-label">Data &amp; Content</div>
-        <label class="toggle-row"><span>Client / customer data</span><span class="toggle-wrap"><input type="checkbox" id="set-clientDataGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Large pastes</span><span class="toggle-wrap"><input type="checkbox" id="set-largePasteGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <div class="settings-group-label">Behavioral (off by default)</div>
-        <label class="toggle-row"><span>Public paste-site warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-reputationGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Late-night posting alert</span><span class="toggle-wrap"><input type="checkbox" id="set-lateNightPostAlert" class="toggle-input"><span class="toggle-track"></span></span></label>
-        <label class="toggle-row"><span>Tone warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-emotionalPostWarning" class="toggle-input"><span class="toggle-track"></span></span></label>
+      <div class="controls">
+        <span class="count" id="count">—</span>
+        <button class="clear-btn" id="clear-btn">Clear History</button>
+      </div>
+
+      <div id="proof-container">
+        <div class="empty-state" id="empty-state">
+          <div class="icon">🛡</div>
+          <p>You're protected — ShieldVault is on guard.</p>
+          <p class="hint">Try pasting an API key in ChatGPT to see it in action.</p>
+        </div>
+        <div class="proof-list" id="proof-list"></div>
+      </div>
+
+      <div class="changelog">
+        <div class="changelog-title">Changelog</div>
+        <div class="changelog-item"><strong>v1.6.6</strong> — tabbed UI, status chip, expandable explanations, badge count.</div>
+        <div class="changelog-item"><strong>v1.6.5</strong> — detection settings, Pro licensing flow, persistent proof history.</div>
+      </div>
+
+      <div class="keyboard-hint">
+        <span id="kbd-shortcut-text"></span>
       </div>
     </div>
 
-    <!-- Pro Section - Not activated -->
-    <div class="pro-section" id="pro-section">
-      <div class="pro-header">
-        <span class="pro-badge">PRO</span>
-        <span class="pro-title">Your secrets deserve stronger protection</span>
+    <!-- ── Settings Tab ────────────────────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-settings" role="tabpanel" style="display:none">
+      <div class="settings-search-wrap">
+        <input type="search" id="settings-filter" class="settings-search" placeholder="Filter settings…" autocomplete="off" />
       </div>
-      <ul class="pro-features">
-        <li>&#128274; Extended history — view up to 100 blocked events (free plan: last 25)</li>
-        <li>&#9889; Expanded detectors (Anthropic, HuggingFace, Shopify, Vault, and more)</li>
-        <li>&#128680; Instant alerts on high-risk paste targets</li>
-        <li>&#128587; Priority support from the developer</li>
-      </ul>
-      <button class="pro-btn pro-btn-preview" id="btn-preview">Start 7-day Pro preview</button>
-      <p class="pro-help-text" id="preview-help-text">One-time preview. No payment required.</p>
-      <div class="pro-buttons">
-        <button class="pro-btn pro-btn-annual" id="btn-annual">
-          $49.99/year <span class="pro-savings">Save 30%</span>
+
+      <div id="settings-body-inner">
+        <div class="settings-group">
+          <div class="settings-group-label">Secrets &amp; Credentials</div>
+          <label class="toggle-row"><span>API keys &amp; secrets</span><span class="toggle-wrap"><input type="checkbox" id="set-secretGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Auth tokens</span><span class="toggle-wrap"><input type="checkbox" id="set-tokenGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Passwords</span><span class="toggle-wrap"><input type="checkbox" id="set-passwordGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Seed &amp; recovery phrases</span><span class="toggle-wrap"><input type="checkbox" id="set-recoveryPhraseGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-label">Personal &amp; Financial</div>
+          <label class="toggle-row"><span>Credit card numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-creditCardGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Phone numbers</span><span class="toggle-wrap"><input type="checkbox" id="set-phoneGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Bank account info</span><span class="toggle-wrap"><input type="checkbox" id="set-bankAccountGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Personal info (SSN, DOB)</span><span class="toggle-wrap"><input type="checkbox" id="set-privateInfoGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-label">Data &amp; Content</div>
+          <label class="toggle-row"><span>Client / customer data</span><span class="toggle-wrap"><input type="checkbox" id="set-clientDataGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Large pastes</span><span class="toggle-wrap"><input type="checkbox" id="set-largePasteGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-label">Behavioral</div>
+          <label class="toggle-row"><span>Public paste-site warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-reputationGuard" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Late-night posting alert</span><span class="toggle-wrap"><input type="checkbox" id="set-lateNightPostAlert" class="toggle-input"><span class="toggle-track"></span></span></label>
+          <label class="toggle-row"><span>Tone warnings</span><span class="toggle-wrap"><input type="checkbox" id="set-emotionalPostWarning" class="toggle-input"><span class="toggle-track"></span></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Pro Tab ─────────────────────────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-pro" role="tabpanel" style="display:none">
+      <!-- Not activated -->
+      <div class="pro-section" id="pro-section">
+        <div class="pro-header">
+          <span class="pro-badge">PRO</span>
+          <span class="pro-title">Your secrets deserve stronger protection</span>
+        </div>
+        <p class="pro-stats-line" id="pro-stats-line" style="display:none"></p>
+        <ul class="pro-features">
+          <li>&#128274; Extended history — up to 100 blocked events (free: last 25)</li>
+          <li>&#9889; Expanded detectors (Anthropic, HuggingFace, Shopify, Vault, and more)</li>
+          <li>&#128680; Instant alerts on high-risk paste targets</li>
+          <li>&#128587; Priority support from the developer</li>
+        </ul>
+        <button class="pro-btn pro-btn-preview" id="btn-preview">Start 7-day Pro preview</button>
+        <p class="pro-help-text" id="preview-help-text">One-time preview. No payment required.</p>
+        <div class="pro-buttons">
+          <button class="pro-btn pro-btn-annual" id="btn-annual">
+            $49.99/year <span class="pro-savings">Save 30%</span>
+          </button>
+          <button class="pro-btn pro-btn-monthly" id="btn-monthly">
+            $4.99/mo
+          </button>
+        </div>
+        <p class="pro-help-text">Already paid? Activate your license key here after checkout.</p>
+        <button class="pro-purchased-link" id="btn-already-purchased">
+          Activate an existing license key
         </button>
-        <button class="pro-btn pro-btn-monthly" id="btn-monthly">
-          $4.99/mo
-        </button>
       </div>
-      <p class="pro-help-text">Already paid? Activate your license key here after checkout.</p>
-      <button class="pro-purchased-link" id="btn-already-purchased">
-        Activate an existing license key
-      </button>
-    </div>
 
-    <!-- License Key Input (hidden by default) -->
-    <div class="license-input-section" id="license-input-section" style="display: none;">
-      <div class="pro-header">
-        <span class="pro-badge">PRO</span>
-        <span class="pro-title">Enter Your License Key</span>
+      <!-- License key input -->
+      <div class="license-input-section" id="license-input-section" style="display: none;">
+        <div class="pro-header">
+          <span class="pro-badge">PRO</span>
+          <span class="pro-title">Enter Your License Key</span>
+        </div>
+        <div class="license-form">
+          <input type="text" id="license-key-input" placeholder="SV-XXXX-XXXX-XXXX-XXXX" class="license-input" autocomplete="off" />
+          <button class="pro-btn pro-btn-monthly" id="btn-activate" style="width: 100%;">Activate</button>
+          <p class="license-error" id="license-error" style="display: none;"></p>
+          <p class="license-help-text">Tip: Paste your key and press Enter to activate.</p>
+        </div>
+        <button class="pro-purchased-link" id="btn-cancel-activate">Cancel</button>
       </div>
-      <div class="license-form">
-        <input type="text" id="license-key-input" placeholder="SV-XXXX-XXXX-XXXX-XXXX" class="license-input" autocomplete="off" />
-        <button class="pro-btn pro-btn-monthly" id="btn-activate" style="width: 100%;">Activate</button>
-        <p class="license-error" id="license-error" style="display: none;"></p>
-        <p class="license-help-text">Tip: Paste your key and press Enter to activate.</p>
+
+      <!-- Pro active -->
+      <div class="pro-active" id="pro-active" style="display: none;">
+        <div class="pro-active-badge">PRO</div>
+        <p id="pro-active-text">Thanks for supporting ShieldVault!</p>
+        <button class="pro-reset-link" id="btn-reset-pro">Deactivate Pro</button>
       </div>
-      <button class="pro-purchased-link" id="btn-cancel-activate">Cancel</button>
-    </div>
-
-    <!-- Pro Active State (hidden by default) -->
-    <div class="pro-active" id="pro-active" style="display: none;">
-      <div class="pro-active-badge">PRO</div>
-      <p id="pro-active-text">Thanks for supporting ShieldVault!</p>
-      <button class="pro-reset-link" id="btn-reset-pro">Deactivate Pro</button>
-    </div>
-
-    <div class="changelog">
-      <div class="changelog-title">Changelog</div>
-      <div class="changelog-item"><strong>v1.6.6 · 2026-06-21</strong> — clearer hard/soft/local messaging, per-block “why”, and false-positive controls.</div>
-      <div class="changelog-item"><strong>v1.6.5</strong> — detection settings, Pro licensing flow, and persistent proof history.</div>
     </div>
 
     <footer>
-      <span id="sv-version">ShieldVault</span> · <span id="sv-updated">Updated —</span> — Detection without possession
+      <span id="sv-version">ShieldVault</span> · <span id="sv-updated">Updated —</span>
       · <a href="#" id="how-it-works-link" class="footer-link">How it works</a>
     </footer>
   </div>
