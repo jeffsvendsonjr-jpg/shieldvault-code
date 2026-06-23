@@ -1,55 +1,211 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ShieldVault — Proofs of Prevention</title>
+  <title>ShieldVault</title>
   <link rel="stylesheet" href="proofs.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Proofs of Prevention</h1>
-      <p class="subtitle">What ShieldVault blocked this session</p>
+      <div class="header-row">
+        <h1>ShieldVault</h1>
+        <div class="tab-buttons">
+          <button class="tab-btn active" id="tab-activity" data-tab="activity">Activity</button>
+          <button class="tab-btn" id="tab-settings" data-tab="settings">Settings</button>
+        </div>
+      </div>
     </header>
 
-    <div class="notice">
-      <strong>Session-only memory:</strong> This list exists only in browser memory.
-      It will be cleared when you close the browser. No secrets are stored—only metadata
-      (domain, time, detection type).
-    </div>
+    <!-- ACTIVITY TAB -->
+    <div class="tab-content active" id="panel-activity">
 
-    <div class="controls">
-      <span class="count" id="count">—</span>
-      <button class="clear-btn" id="clear-btn">Clear History</button>
-    </div>
-
-    <div id="proof-container">
-      <div class="empty-state" id="empty-state">
-        <div class="icon">&#10003;</div>
-        <p>No preventions recorded yet</p>
-        <p class="hint">When ShieldVault blocks a secret, it will appear here</p>
+      <!-- FIRST RUN DEMO -->
+      <div class="first-run-demo" id="first-run-demo">
+        <div class="demo-title">Catch the mistake before it leaves your fingertips</div>
+        <p class="demo-sub">Try a safe example and watch ShieldVault step in.</p>
+        <div class="demo-label">Try one</div>
+        <div class="demo-buttons">
+          <button class="demo-chip" type="button" data-demo-value="THIS IS ABSOLUTELY RIDICULOUS!!!">Heated message</button>
+          <button class="demo-chip" type="button" data-demo-value="YOU HAVE TO BE KIDDING ME RIGHT NOW">All caps reply</button>
+          <button class="demo-chip" type="button" data-demo-value="sk_test_51H8xMockExample123456789ABCDEF">Mock API key</button>
+          <button class="demo-chip" type="button" data-demo-value="per my last email, this is the third time I'm asking">Passive aggressive</button>
+        </div>
+        <textarea id="demo-input" class="demo-input" placeholder="Type a mock secret or heated message here..."></textarea>
+        <div class="demo-result" id="demo-result">
+          <div class="demo-result-title" id="demo-result-title"></div>
+          <p class="demo-result-copy" id="demo-result-copy"></p>
+        </div>
+        <div class="demo-footer">
+          Want to customize what gets caught? <a href="#" class="demo-settings-link" id="demo-settings-link">Open Settings →</a>
+        </div>
       </div>
-      <div class="proof-list" id="proof-list"></div>
+
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-secrets">0</div>
+          <div class="stat-label">Secrets/Code Protected</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-behavioral">0</div>
+          <div class="stat-label">Messages Cooled Down</div>
+        </div>
+        <div class="stat-card stat-card-wide">
+          <div class="stat-value" id="stat-days">0</div>
+          <div class="stat-label">Days Protected</div>
+        </div>
+      </div>
+
+      <div class="since-install-summary" id="since-install-summary">
+        <div class="since-install-title">Since install</div>
+        <ul class="since-install-list">
+          <li><span class="since-install-number" id="summary-events">0</span> protection events</li>
+          <li><span class="since-install-number" id="summary-sensitive">0</span> secrets/code blocks protected</li>
+          <li><span class="since-install-number" id="summary-cooled">0</span> messages cooled down</li>
+          <li><span class="since-install-number" id="summary-paused-sites">0</span> sites paused by you</li>
+        </ul>
+        <p class="since-install-empty" id="summary-empty-message">
+          Once ShieldVault protects something, this area will show your local protection summary.
+        </p>
+        <p class="since-install-paywall" id="summary-paywall-copy"></p>
+      </div>
+
+      <div class="section-header">
+        <span class="section-title">Recent Activity</span>
+        <div class="section-actions">
+          <button class="clear-btn" id="export-json-btn">Export JSON</button>
+          <button class="clear-btn" id="export-btn">Export</button>
+          <button class="clear-btn" id="clear-btn">Clear</button>
+        </div>
+      </div>
+
+      <div id="proof-container">
+        <div class="empty-state" id="empty-state">
+          <div class="icon">&#10003;</div>
+          <p>Nothing has needed stopping yet</p>
+          <p class="hint">Try the quick demo above, then ShieldVault will log real preventions here</p>
+        </div>
+        <div class="proof-list" id="proof-list"></div>
+      </div>
+
+      <div class="notice">
+        <strong>100% local:</strong> Only metadata is stored (domain, time, detection type).
+        No secrets or message content is ever saved.
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div class="tab-content" id="panel-settings">
+
+      <div class="settings-callout" id="settings-callout">
+        <div class="settings-callout-header">
+          <span class="settings-callout-icon">💡</span>
+          <span class="settings-callout-title">Why some toggles are off</span>
+          <button class="settings-callout-dismiss" id="settings-callout-dismiss" type="button" aria-label="Dismiss">×</button>
+        </div>
+        <p class="settings-callout-body">
+          We've calibrated defaults to catch what matters and skip what doesn't.
+          <strong>SSN</strong> and <strong>Credit Card</strong> detection are on by default because accidental leaks have real cost.
+          <strong>Phone</strong> and <strong>Home Address</strong> are off because people usually share those on purpose — detection there creates more false alarms than real protection.
+          <strong>Late Night Guard</strong> is off by default — it's a power feature best enabled once you know ShieldVault.
+        </p>
+        <p class="settings-callout-body">
+          Turn anything on if you want extra coverage. Turn anything off if it gets in your way.
+        </p>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Always Free + Unlimited</div>
+        <label class="toggle-row">
+          <span class="toggle-label">Secret Detection<span class="toggle-desc">API keys, tokens, private keys (50 patterns)</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="secretDetection" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">Confidential Document Detection<span class="toggle-desc">Blocks CONFIDENTIAL, NDA, INTERNAL ONLY text in AI chats</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="confidentialDetection" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">Code Block Detection<span class="toggle-desc">Warns before pasting large code blocks into AI chats</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="codeBlockDetection" checked>
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Behavioral Protection — <span id="sv-behavioral-quota-badge">10 free warnings/week</span></div>
+        <label class="toggle-row">
+          <span class="toggle-label">Rage / Tone Detection<span class="toggle-desc">Shouting, threats, sarcasm, passive aggression</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="behavioralDetection" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">PII: Social Security Number<span class="toggle-desc">Catches SSN-formatted text or "ssn:" / "social security:" labels</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="piiDetectionSSN" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">PII: Credit Card Number<span class="toggle-desc">Catches Visa, Mastercard, Amex, Discover card numbers</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="piiDetectionCreditCard" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">PII: Phone Number<span class="toggle-desc">Off by default — high false-positive rate on order numbers and IDs</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="piiDetectionPhone">
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">PII: Home Address<span class="toggle-desc">Off by default — false-positives on text like "10 digit ct"</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="piiDetectionAddress">
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">Late Night Guard<span class="toggle-desc">Flags emotional messages between midnight and 5am</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="lateNightGuard">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Smart Features</div>
+        <label class="toggle-row">
+          <span class="toggle-label">Repeat Offender Warnings<span class="toggle-desc">Extra warning when the same secret is blocked 3+ times</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="repeatOffenderWarnings" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">Clipboard Clear Offer<span class="toggle-desc">Offer to clear clipboard after blocking a pasted secret</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="clipboardClear" checked>
+          <span class="toggle-switch"></span>
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-label">Sound on Block<span class="toggle-desc">Play a subtle tone when something is blocked</span></span>
+          <input type="checkbox" class="toggle-input" data-setting="soundOnBlock">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+
+      <div class="settings-group" id="paused-sites-group">
+        <div class="settings-group-title">Paused Sites</div>
+        <div id="paused-sites-list">
+          <p style="font-size:12px;color:#6b7280;margin:8px 0 0">No sites paused. Use "Pause on this site" in a warning to silence ShieldVault on a domain.</p>
+        </div>
+      </div>
     </div>
 
     <!-- Pro Section - Not activated -->
     <div class="pro-section" id="pro-section">
       <div class="pro-header">
         <span class="pro-badge">PRO</span>
-        <span class="pro-title">Upgrade to ShieldVault Pro</span>
+        <span class="pro-title">Unlimited behavioral warnings</span>
       </div>
-      <ul class="pro-features">
-        <li>Priority support</li>
-        <li>Early access to new detectors</li>
-        <li>Support independent development</li>
-      </ul>
-      <div class="pro-buttons">
-        <button class="pro-btn pro-btn-monthly" id="btn-monthly">
-          $5.99/month
-        </button>
-      </div>
+      <div id="sv-quota-status" style="font-size:11px;text-align:center;margin-bottom:8px;color:#9ca3af;">10 free behavioral warnings per week</div>
+      <div style="font-size:11px;color:#9ca3af;text-align:center;margin-bottom:12px;">Secrets, confidential docs, and code blocks are always free.</div>
+      <button class="pro-btn pro-btn-plus" id="btn-lifetime" style="width:100%;margin-bottom:4px;background:#1a1a2e;border-color:#1a1a2e;color:#fff;font-weight:700;font-size:15px;padding:12px;">Lifetime — $39 <span style="font-size:11px;font-weight:400;opacity:0.8">one-time · never renews</span></button>
+      <div style="font-size:10px;color:#9ca3af;text-align:center;margin-bottom:10px;">Most popular · recommended</div>
+      <button class="pro-btn pro-btn-monthly" id="btn-monthly" style="width:100%;margin-bottom:8px;font-size:12px;color:#6b7280;border-color:#2a2e3a;">Monthly — $4.99/mo</button>
       <button class="pro-purchased-link" id="btn-already-purchased">
         I already have a license key
       </button>
@@ -72,12 +228,12 @@
     <!-- Pro Active State (hidden by default) -->
     <div class="pro-active" id="pro-active" style="display: none;">
       <div class="pro-active-badge">PRO</div>
-      <p>Thanks for supporting ShieldVault!</p>
+      <p>Every behavioral check, every secret caught — all running at full power. You're fully covered.</p>
       <button class="pro-reset-link" id="btn-reset-pro">Deactivate Pro</button>
     </div>
 
     <footer>
-      ShieldVault — Detection without possession
+      ShieldVault v1.6.2
     </footer>
   </div>
   <script src="proofs.js"></script>

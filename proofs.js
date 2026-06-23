@@ -1,243 +1,755 @@
-(function () {
-  'use strict';
+// ======================================================
+// ShieldVault — Proofs UI Script v1.5.1
+// License verification via ShieldVault API
+// ======================================================
 
-  const API_BASE = 'https://shieldvault.site';
-  const PRO_KEY = 'shieldvault_pro_v1';
-  const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
-  const STRIPE_KEY_TTL = 86400000; // 24 hours
+// ================================
+// API CONFIG
+// ================================
+const API_BASE = "https://shieldvault.site";
 
-  // ── Proof list ──────────────────────────────────────────────────────────────
+async function apiFetch(path, options) {
+  const response = await fetch(API_BASE + path, options);
 
-  let proofs = [];
-
-  function renderProofs() {
-    const container = document.getElementById('proof-list');
-    const empty = document.getElementById('empty-state');
-    const count = document.getElementById('count');
-
-    if (!proofs.length) {
-      empty.style.display = '';
-      container.style.display = 'none';
-      count.textContent = '0 preventions';
-      return;
-    }
-
-    empty.style.display = 'none';
-    container.style.display = '';
-    count.textContent = proofs.length + (proofs.length === 1 ? ' prevention' : ' preventions');
-
-    container.innerHTML = '';
-    for (const p of proofs) {
-      const item = document.createElement('div');
-      item.className = 'proof-item';
-      const time = new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      item.innerHTML =
-        '<span class="proof-domain">' + escHtml(p.domain || 'unknown') + '</span>' +
-        '<span class="proof-type">' + escHtml(p.detectors ? p.detectors.join(', ') : p.vector || '') + '</span>' +
-        '<span class="proof-time">' + time + '</span>';
-      container.appendChild(item);
-    }
+  if (!response.ok) {
+    throw new Error(`ShieldVault API request failed with status ${response.status}`);
   }
 
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
+  return response;
+}
 
-  document.getElementById('clear-btn').addEventListener('click', function () {
-    proofs = [];
-    renderProofs();
+// ================================
+// DEFAULT SETTINGS
+// ================================
+const DEFAULT_SETTINGS = {
+  secretDetection: true,
+  behavioralDetection: true,
+  confidentialDetection: true,
+  codeBlockDetection: true,
+  piiDetection: true,
+  piiDetectionSSN: true,
+  piiDetectionCreditCard: true,
+  piiDetectionPhone: false,
+  piiDetectionAddress: false,
+  lateNightGuard: false,
+  repeatOffenderWarnings: true,
+  clipboardClear: true,
+  soundOnBlock: false,
+};
+
+// ================================
+// DOM ELEMENTS
+// ================================
+const emptyEl = document.getElementById("empty-state");
+const listEl = document.getElementById("proof-list");
+const clearBtn = document.getElementById("clear-btn");
+const exportBtn = document.getElementById("export-btn");
+
+const statSecrets = document.getElementById("stat-secrets");
+const statBehavioral = document.getElementById("stat-behavioral");
+const statDays = document.getElementById("stat-days");
+const summaryEvents = document.getElementById("summary-events");
+const summarySensitive = document.getElementById("summary-sensitive");
+const summaryCooled = document.getElementById("summary-cooled");
+const summaryPausedSites = document.getElementById("summary-paused-sites");
+const summaryEmptyMessage = document.getElementById("summary-empty-message");
+const summaryPaywallCopy = document.getElementById("summary-paywall-copy");
+
+const proSection = document.getElementById("pro-section");
+const proActive = document.getElementById("pro-active");
+const licenseInputSection = document.getElementById("license-input-section");
+const licenseKeyInput = document.getElementById("license-key-input");
+const licenseError = document.getElementById("license-error");
+
+const btnMonthly = document.getElementById("btn-monthly");
+const btnLifetime = document.getElementById("btn-lifetime");
+const btnAlreadyPurchased = document.getElementById("btn-already-purchased");
+const btnActivate = document.getElementById("btn-activate");
+const btnCancelActivate = document.getElementById("btn-cancel-activate");
+const btnResetPro = document.getElementById("btn-reset-pro");
+
+const quotaStatus = document.getElementById("sv-quota-status");
+const firstRunDemo = document.getElementById("first-run-demo");
+const PROTECTION_EVENT_CATEGORIES = new Set(["secret", "confidential", "codeblock", "behavioral"]);
+const SENSITIVE_OR_CODE_CATEGORIES = new Set(["secret", "confidential", "codeblock"]);
+let isProUser = false;
+
+// ================================
+// TAB SWITCHING
+// ================================
+const tabButtons = document.querySelectorAll(".tab-btn");
+const tabPanels = document.querySelectorAll(".tab-content");
+
+function activateTab(target) {
+  tabButtons.forEach(b => b.classList.remove("active"));
+  tabPanels.forEach(p => p.classList.remove("active"));
+  const targetBtn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
+  const targetPanel = document.getElementById(`panel-${target}`);
+  if (targetBtn) targetBtn.classList.add("active");
+  if (targetPanel) targetPanel.classList.add("active");
+}
+
+tabButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.tab;
+    activateTab(target);
   });
+});
 
-  // Ask background for stored proofs (best-effort; extension may not have any)
-  try {
-    chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_PROOFS' }, function (response) {
-      if (chrome.runtime.lastError) return;
-      if (response && Array.isArray(response.proofs)) {
-        proofs = response.proofs;
-        renderProofs();
-      }
-    });
-  } catch (_) {}
+// ================================
+// SETTINGS CALLOUT (v1.5)
+// Shown until user dismisses it. Dismissed state stored in chrome.storage.local
+// so it doesn't reappear on every popup open.
+// ================================
+const settingsCallout = document.getElementById("settings-callout");
+const settingsCalloutDismissBtn = document.getElementById("settings-callout-dismiss");
+const demoSettingsLink = document.getElementById("demo-settings-link");
 
-  // Live updates while popup is open
-  try {
-    chrome.runtime.onMessage.addListener(function (message) {
-      if (!message || message.type !== 'SHIELDVAULT_PREVENTED') return;
-      proofs.unshift({
-        ts: Date.now(),
-        domain: message.domain || '',
-        detectors: message.detectors || [],
-        vector: message.vector || '',
-      });
-      renderProofs();
-    });
-  } catch (_) {}
+function loadCalloutState() {
+  if (!settingsCallout) return;
+  chrome.storage.local.get(["shieldvault_settings_callout_dismissed"], (result) => {
+    if (result.shieldvault_settings_callout_dismissed === true) {
+      settingsCallout.classList.add("dismissed");
+    }
+  });
+}
 
-  renderProofs();
+if (settingsCalloutDismissBtn) {
+  settingsCalloutDismissBtn.addEventListener("click", () => {
+    if (settingsCallout) settingsCallout.classList.add("dismissed");
+    chrome.storage.local.set({ shieldvault_settings_callout_dismissed: true });
+  });
+}
 
-  // ── Pro status ───────────────────────────────────────────────────────────────
+if (demoSettingsLink) {
+  demoSettingsLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    activateTab("settings");
+  });
+}
 
-  function getProStatus() {
-    try {
-      const raw = localStorage.getItem(PRO_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch { return null; }
-  }
+// ================================
+// SETTINGS MANAGEMENT
+// ================================
+let currentSettings = { ...DEFAULT_SETTINGS };
 
-  function saveProStatus(data) {
-    localStorage.setItem(PRO_KEY, JSON.stringify(data));
-  }
+function loadSettingsUI() {
+  chrome.storage.local.get(["shieldvault_settings"], (result) => {
+    if (result.shieldvault_settings) {
+      currentSettings = { ...DEFAULT_SETTINGS, ...result.shieldvault_settings };
+    }
+    syncSettingsToUI();
+  });
+}
 
-  function clearProStatus() {
-    localStorage.removeItem(PRO_KEY);
-  }
+function syncSettingsToUI() {
+  document.querySelectorAll(".toggle-input").forEach(input => {
+    const key = input.dataset.setting;
+    if (key && currentSettings[key] !== undefined) {
+      input.checked = currentSettings[key];
+    }
+  });
+}
 
-  function applyProState() {
-    const pro = getProStatus();
-    const sectionUpgrade = document.getElementById('pro-section');
-    const sectionActive = document.getElementById('pro-active');
-    const sectionLicense = document.getElementById('license-input-section');
+function saveSettings() {
+  chrome.storage.local.set({ shieldvault_settings: currentSettings });
+}
 
-    if (pro && pro.active) {
-      sectionUpgrade.style.display = 'none';
-      sectionLicense.style.display = 'none';
-      sectionActive.style.display = '';
+document.querySelectorAll(".toggle-input").forEach(input => {
+  input.addEventListener("change", () => {
+    const key = input.dataset.setting;
+    if (key) {
+      currentSettings[key] = input.checked;
+      saveSettings();
+    }
+  });
+});
+
+// ================================
+// HELPERS
+// ================================
+function formatTime(timestamp) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function formatDate(timestamp) {
+  return new Date(timestamp).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function vectorLabel(vector) {
+  const labels = {
+    "typed": "Typed",
+    "paste": "Pasted",
+    "submit": "Submit blocked",
+    "input-fallback": "Auto-detected"
+  };
+  return labels[vector] || vector;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function daysSince(timestamp) {
+  if (!timestamp) return 0;
+  const diff = Date.now() - timestamp;
+  return Math.max(1, Math.floor(diff / (1000 * 60 * 60 * 24)));
+}
+
+function normalizeCategory(proof) {
+  if (!proof || typeof proof.category !== "string") return "secret";
+  return proof.category.toLowerCase().trim();
+}
+
+function computeProtectionSummary(proofs, pausedSitesCount) {
+  const safeProofs = Array.isArray(proofs) ? proofs : [];
+  const protectionEvents = safeProofs.filter((proof) => PROTECTION_EVENT_CATEGORIES.has(normalizeCategory(proof)));
+  const sensitiveProtected = protectionEvents.filter((proof) => SENSITIVE_OR_CODE_CATEGORIES.has(normalizeCategory(proof)));
+  const messagesCooledDown = protectionEvents.filter((proof) => normalizeCategory(proof) === "behavioral");
+
+  return {
+    protectionEvents: protectionEvents.length,
+    sensitiveProtected: sensitiveProtected.length,
+    messagesCooledDown: messagesCooledDown.length,
+    pausedSites: pausedSitesCount,
+  };
+}
+
+function renderSinceInstallSummary(summary) {
+  if (!summary || !summaryEvents || !summarySensitive || !summaryCooled || !summaryPausedSites || !summaryEmptyMessage || !summaryPaywallCopy) return;
+  summaryEvents.textContent = summary.protectionEvents;
+  summarySensitive.textContent = summary.sensitiveProtected;
+  summaryCooled.textContent = summary.messagesCooledDown;
+  summaryPausedSites.textContent = summary.pausedSites;
+
+  if (summary.protectionEvents > 0) {
+    summaryEmptyMessage.style.display = "none";
+    if (!isProUser) {
+      summaryPaywallCopy.textContent = `You've had ${summary.protectionEvents} protection events. Pro keeps full local receipts and export history.`;
+      summaryPaywallCopy.style.display = "block";
     } else {
-      sectionUpgrade.style.display = '';
-      sectionLicense.style.display = 'none';
-      sectionActive.style.display = 'none';
+      summaryPaywallCopy.style.display = "none";
+      summaryPaywallCopy.textContent = "";
     }
+    return;
   }
 
-  applyProState();
+  summaryEmptyMessage.style.display = "block";
+  summaryPaywallCopy.style.display = "none";
+  summaryPaywallCopy.textContent = "";
+}
 
-  // ── Stripe publishable key — lazy + cached ───────────────────────────────────
+// ================================
+// STATS RENDERING
+// ================================
+function renderStats(stats) {
+  if (!stats) return;
+  statSecrets.textContent = stats.totalSecretsBlocked || 0;
+  statBehavioral.textContent = stats.totalBehavioralWarnings || 0;
+  statDays.textContent = daysSince(stats.firstInstalled);
+}
 
-  let _stripeKeyPromise = null;
+// ================================
+// PROOFS RENDERING
+// ================================
+function renderProofs(proofs) {
+  if (!proofs || proofs.length === 0) {
+    emptyEl.style.display = "block";
+    listEl.style.display = "none";
+    listEl.innerHTML = "";
+    updateFirstRunVisibility(0);
+    return;
+  }
 
-  function getStripePublishableKey() {
-    if (_stripeKeyPromise) return _stripeKeyPromise;
+  emptyEl.style.display = "none";
+  listEl.style.display = "flex";
 
-    _stripeKeyPromise = (async function () {
-      // Check cache first
-      try {
-        const cached = JSON.parse(localStorage.getItem(STRIPE_KEY_CACHE) || 'null');
-        if (cached && cached.pk && Date.now() - cached.ts < STRIPE_KEY_TTL) {
-          return cached.pk;
+  listEl.innerHTML = proofs.slice(0, 50).map(proof => {
+    const category = proof.category || "secret";
+    const categoryClass = `proof-${category}`;
+    const tagClass = `tag-${category === "secret" ? "detector" : category}`;
+
+    return `
+      <div class="proof-item ${categoryClass}">
+        <div class="proof-header">
+          <span class="proof-domain">${escapeHtml(proof.domain)}</span>
+          <span class="proof-time">${formatTime(proof.time)}</span>
+        </div>
+        <div class="proof-details">
+          ${proof.detectors.map(d => `<span class="tag ${tagClass}">${escapeHtml(d)}</span>`).join("")}
+          <span class="tag tag-vector">${escapeHtml(vectorLabel(proof.vector))}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  updateFirstRunVisibility(proofs.length);
+}
+
+function updateFirstRunVisibility(proofCount) {
+  if (!firstRunDemo) return;
+  // Hide demo once user has any real activity OR is Pro
+  const isPro = proActive && getComputedStyle(proActive).display !== "none";
+  if (proofCount > 0 || isPro) {
+    firstRunDemo.style.display = "none";
+  } else {
+    firstRunDemo.style.display = "";
+  }
+}
+
+function loadProofs() {
+  chrome.runtime.sendMessage({ type: "GET_PROOFS" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error("Failed to get proofs:", chrome.runtime.lastError);
+      return;
+    }
+    const proofs = response?.proofs || [];
+    const stats = response?.stats || {};
+    chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+      const pausedDomains = Array.isArray(result.shieldvault_paused_domains)
+        ? result.shieldvault_paused_domains
+        : [];
+      renderProofs(proofs);
+      renderStats(stats);
+      renderSinceInstallSummary(computeProtectionSummary(proofs, pausedDomains.length));
+    });
+  });
+}
+
+// ================================
+// EXPORT
+// ================================
+function exportStats() {
+  chrome.runtime.sendMessage({ type: "GET_PROOFS" }, (response) => {
+    if (chrome.runtime.lastError) return;
+
+    const stats = response?.stats || {};
+    const proofs = response?.proofs || [];
+
+    let report = "ShieldVault Prevention Report\n";
+    report += "=============================\n\n";
+    report += `Generated: ${formatDate(Date.now())}\n`;
+    report += `Protected since: ${stats.firstInstalled ? formatDate(stats.firstInstalled) : "Unknown"}\n`;
+    report += `Days protected: ${daysSince(stats.firstInstalled)}\n\n`;
+    report += `Total secrets/code protected: ${stats.totalSecretsBlocked || 0}\n`;
+    report += `Total messages cooled down: ${stats.totalBehavioralWarnings || 0}\n\n`;
+    report += "Recent Activity\n";
+    report += "---------------\n";
+
+    if (proofs.length === 0) {
+      report += "No activity recorded.\n";
+    } else {
+      for (const p of proofs.slice(0, 50)) {
+        report += `${formatDate(p.time)} | ${p.domain} | ${p.detectors.join(", ")} | ${vectorLabel(p.vector)} | ${p.category || "secret"}\n`;
+      }
+    }
+
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shieldvault-report-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function exportStatsJSON() {
+  chrome.runtime.sendMessage({ type: "GET_PROOFS" }, (response) => {
+    if (chrome.runtime.lastError) return;
+
+    const stats = response?.stats || {};
+    const proofs = response?.proofs || [];
+
+    const data = {
+      generated: new Date().toISOString(),
+      stats: {
+        totalSecretsBlocked: stats.totalSecretsBlocked || 0,
+        totalBehavioralWarnings: stats.totalBehavioralWarnings || 0,
+        daysProtected: daysSince(stats.firstInstalled),
+        firstInstalled: stats.firstInstalled ? new Date(stats.firstInstalled).toISOString() : null,
+      },
+      activity: proofs.slice(0, 200).map(p => ({
+        time: new Date(p.time).toISOString(),
+        domain: p.domain,
+        detectors: p.detectors,
+        vector: p.vector,
+        category: p.category || "secret",
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shieldvault-report-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ================================
+// PRO STATUS MANAGEMENT
+// ================================
+function showView(view) {
+  proSection.style.display = "none";
+  proActive.style.display = "none";
+  licenseInputSection.style.display = "none";
+
+  if (view === "upgrade") {
+    proSection.style.display = "block";
+  } else if (view === "active") {
+    proActive.style.display = "block";
+  } else if (view === "input") {
+    licenseInputSection.style.display = "block";
+  }
+}
+
+function loadProStatus() {
+  chrome.storage.local.get(
+    ["shieldvault_pro", "shieldvault_license_key", "shieldvault_behavioral_uses"],
+    (result) => {
+      const quotaBadge = document.getElementById("sv-behavioral-quota-badge");
+      isProUser = result.shieldvault_pro === true && !!result.shieldvault_license_key;
+      if (result.shieldvault_pro === true && result.shieldvault_license_key) {
+        verifyStoredLicense(result.shieldvault_license_key);
+        if (quotaBadge) {
+          quotaBadge.textContent = "unlimited ✓";
+          quotaBadge.style.color = "#34d399";
         }
-      } catch (_) {}
+      } else {
+        const uses = typeof result.shieldvault_behavioral_uses === "number"
+          ? result.shieldvault_behavioral_uses
+          : 0;
+        const remaining = Math.max(0, 10 - uses);
+        if (quotaStatus) {
+          if (remaining > 0) {
+            quotaStatus.textContent = `${remaining} of 10 free behavioral warnings remaining this week`;
+            quotaStatus.style.color = remaining <= 2 ? "#b45309" : "#9ca3af";
+          } else {
+            quotaStatus.textContent = "Behavioral warning quota used — resets Sunday";
+            quotaStatus.style.color = "#dc2626";
+            quotaStatus.style.fontWeight = "600";
+          }
+        }
+        if (quotaBadge) {
+          if (remaining <= 0) {
+            quotaBadge.textContent = "0 of 10 free/week — upgrade";
+            quotaBadge.style.color = "#dc2626";
+            quotaBadge.style.fontWeight = "700";
+          } else if (remaining <= 3) {
+            quotaBadge.textContent = `${remaining} of 10 free warnings left this week`;
+            quotaBadge.style.color = "#b45309";
+            quotaBadge.style.fontWeight = "600";
+          } else {
+            quotaBadge.textContent = `${remaining} of 10 free warnings/week`;
+            quotaBadge.style.color = "";
+          }
+        }
+        showView("upgrade");
+      }
+      loadProofs();
+    }
+  );
+}
 
-      // Fetch from server only when actually needed
-      const res = await fetch(API_BASE + '/api/stripe/publishable-key', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load payment info (' + res.status + ')');
-      const data = await res.json();
-      const pk = data.publishableKey || data.publishable_key;
-      if (!pk) throw new Error('Invalid payment configuration');
+function verifyStoredLicense(key) {
+  apiFetch("/api/license/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ licenseKey: key })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.valid) {
+        isProUser = true;
+        chrome.storage.local.set({ shieldvault_tier: "plus" });
+        showView("active");
+      } else {
+        // Server says invalid. Downgrade Pro flag but KEEP the key cached
+        // so the user can retry without having to re-enter from email.
+        isProUser = false;
+        chrome.storage.local.set({ shieldvault_pro: false });
+        showView("upgrade");
+      }
+    })
+    .catch(() => {
+      // Network failure — keep last known Pro state (offline-tolerant).
+      // TODO v1.5.1: implement grace-period expiry to prevent indefinite
+      // free Pro by hosts-blocking the verify endpoint.
+      isProUser = true;
+      showView("active");
+    });
+}
 
-      // Cache for 24 h
-      try {
-        localStorage.setItem(STRIPE_KEY_CACHE, JSON.stringify({ pk, ts: Date.now() }));
-      } catch (_) {}
+function activateLicense(key) {
+  licenseError.style.display = "none";
+  btnActivate.disabled = true;
+  btnActivate.textContent = "Verifying...";
 
-      return pk;
-    })();
+  apiFetch("/api/license/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ licenseKey: key })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.valid) {
+        isProUser = true;
+        chrome.storage.local.set({
+          shieldvault_pro: true,
+          shieldvault_license_key: key,
+          shieldvault_tier: "plus"
+        }, () => {
+          showView("active");
+        });
+      } else {
+        isProUser = false;
+        licenseError.textContent = "Invalid or expired license key.";
+        licenseError.style.display = "block";
+      }
+    })
+    .catch(() => {
+      isProUser = false;
+      licenseError.textContent = "Could not verify. Check your connection.";
+      licenseError.style.display = "block";
+    })
+    .finally(() => {
+      btnActivate.disabled = false;
+      btnActivate.textContent = "Activate";
+    });
+}
 
-    // Don't cache a rejected promise — allow retry on next click
-    _stripeKeyPromise.catch(function () { _stripeKeyPromise = null; });
+// ================================
+// FIRST RUN DEMO
+// ================================
+function setupFirstRunDemo() {
+  const demoInput = document.getElementById("demo-input");
+  const demoResult = document.getElementById("demo-result");
+  const demoTitle = document.getElementById("demo-result-title");
+  const demoCopy = document.getElementById("demo-result-copy");
 
-    return _stripeKeyPromise;
+  if (!demoInput || !demoResult) return;
+
+  function showDemoUpsell(container, type) {
+    const existingUpsell = container.querySelector(".demo-upsell");
+    if (existingUpsell) existingUpsell.remove();
+    const upsell = document.createElement("p");
+    upsell.className = "demo-upsell";
+    upsell.innerHTML = type === "behavioral"
+      ? `Behavioral checks: 10 free/week. <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" class="demo-upsell-link">Unlock unlimited →</a>`
+      : `Secrets are always blocked free. Want unlimited behavioral protection too? <a href="https://shieldvault.site/api/checkout/quick?plan=lifetime" target="_blank" class="demo-upsell-link">See plans →</a>`;
+    container.appendChild(upsell);
   }
 
-  // ── Upgrade button ───────────────────────────────────────────────────────────
+  function isSecret(text) {
+    return [
+      /sk_(test|live)_[A-Za-z0-9]+/i,
+      /sk-[A-Za-z0-9]{20,}/,
+      /AKIA[0-9A-Z]{16}/,
+      /ghp_[A-Za-z0-9]{36}/,
+      /password\d*!?/i,
+      /(?:api|secret|token|key)[_\-:=\s]+[A-Za-z0-9_\-]{6,}/i
+    ].some((rx) => rx.test(text));
+  }
 
-  document.getElementById('btn-monthly').addEventListener('click', async function () {
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'Loading…';
-    try {
-      // Ensure Stripe key is cached before hitting checkout
-      await getStripePublishableKey();
+  function isBehavioral(text) {
+    const upper = text.replace(/[^A-Z]/g, "").length;
+    const letters = text.replace(/[^A-Za-z]/g, "").length;
+    const capsRatio = letters ? upper / letters : 0;
+    return (
+      capsRatio > 0.65 ||
+      /!{3,}|\?{3,}/.test(text) ||
+      /(ridiculous|kidding|done with this|idiot|stupid|per my last|with all due respect)/i.test(text)
+    );
+  }
 
-      const res = await fetch(API_BASE + '/api/checkout/quick?plan=monthly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error('Checkout error (' + res.status + ')');
-      const data = await res.json();
-      if (data.url) {
-        window.open(data.url, '_blank');
-      } else {
-        throw new Error('No checkout URL returned');
-      }
-    } catch (err) {
-      btn.textContent = 'Error — try again';
-      btn.disabled = false;
-      setTimeout(function () { btn.textContent = '$5.99/month'; btn.disabled = false; }, 3000);
-      return;
-    }
-    btn.textContent = '$5.99/month';
-    btn.disabled = false;
-  });
+  function runDemo() {
+    const value = demoInput.value.trim();
+    demoResult.classList.remove("show", "secret", "behavioral");
+    demoTitle.textContent = "";
+    demoCopy.textContent = "";
+    const existingUpsell = demoResult.querySelector(".demo-upsell");
+    if (existingUpsell) existingUpsell.remove();
 
-  // ── License key flow ─────────────────────────────────────────────────────────
+    if (!value) return;
 
-  document.getElementById('btn-already-purchased').addEventListener('click', function () {
-    document.getElementById('pro-section').style.display = 'none';
-    document.getElementById('license-input-section').style.display = '';
-    document.getElementById('license-key-input').focus();
-  });
-
-  document.getElementById('btn-cancel-activate').addEventListener('click', function () {
-    document.getElementById('license-input-section').style.display = 'none';
-    document.getElementById('pro-section').style.display = '';
-    document.getElementById('license-error').style.display = 'none';
-    document.getElementById('license-key-input').value = '';
-  });
-
-  document.getElementById('btn-activate').addEventListener('click', async function () {
-    const input = document.getElementById('license-key-input');
-    const errorEl = document.getElementById('license-error');
-    const btn = this;
-    const key = input.value.trim();
-
-    if (!key) {
-      errorEl.textContent = 'Please enter a license key.';
-      errorEl.style.display = '';
+    if (isSecret(value)) {
+      demoResult.classList.add("show", "secret");
+      demoTitle.textContent = "Blocked before it left your device";
+      demoCopy.textContent = "ShieldVault catches sensitive data before it slips out.";
+      showDemoUpsell(demoResult, "secret");
       return;
     }
 
-    btn.disabled = true;
-    btn.textContent = 'Activating…';
-    errorEl.style.display = 'none';
-
-    try {
-      const res = await fetch(API_BASE + '/api/license/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(function () { return {}; });
-        throw new Error(body.error || 'Invalid license key');
-      }
-      saveProStatus({ active: true, key, activatedAt: Date.now() });
-      applyProState();
-    } catch (err) {
-      errorEl.textContent = err.message || 'Activation failed. Please try again.';
-      errorEl.style.display = '';
-      btn.textContent = 'Activate';
-      btn.disabled = false;
+    if (isBehavioral(value)) {
+      demoResult.classList.add("show", "behavioral");
+      demoTitle.textContent = "Pause before sending?";
+      demoCopy.textContent = "Written hot. Read cold.";
+      showDemoUpsell(demoResult, "behavioral");
     }
-  });
+  }
 
-  document.getElementById('btn-reset-pro').addEventListener('click', function () {
-    clearProStatus();
-    applyProState();
+  demoInput.addEventListener("input", runDemo);
+
+  document.querySelectorAll("[data-demo-value]").forEach((button) => {
+    button.addEventListener("click", () => {
+      demoInput.value = button.getAttribute("data-demo-value") || "";
+      runDemo();
+    });
   });
-})();
+}
+
+// ================================
+// PAUSED SITES MANAGEMENT
+// ================================
+function loadPausedSites() {
+  chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+    renderPausedSites(result.shieldvault_paused_domains || []);
+  });
+}
+
+function renderPausedSites(domains) {
+  const listEl = document.getElementById("paused-sites-list");
+  if (!listEl) return;
+  if (!domains || domains.length === 0) {
+    listEl.innerHTML = '<p style="font-size:12px;color:#6b7280;margin:8px 0 0">No sites paused. Use "Pause on this site" in a warning to silence ShieldVault on a domain.</p>';
+    return;
+  }
+  listEl.innerHTML = domains.map(d => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <span style="font-size:12px;color:#e6e8ee">${escapeHtml(d)}</span>
+      <button class="paused-site-remove" data-domain="${escapeHtml(d)}" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9ca3af;font-size:11px;cursor:pointer;padding:3px 8px;border-radius:4px">Re-enable</button>
+    </div>
+  `).join("");
+  listEl.querySelectorAll(".paused-site-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const domain = btn.dataset.domain;
+      chrome.storage.local.get(["shieldvault_paused_domains"], (result) => {
+        const updated = (result.shieldvault_paused_domains || []).filter(d => d !== domain);
+        chrome.storage.local.set({ shieldvault_paused_domains: updated }, () => {
+          renderPausedSites(updated);
+        });
+      });
+    });
+  });
+}
+
+// ================================
+// EVENT HANDLERS
+// ================================
+
+clearBtn.addEventListener("click", () => {
+  if (confirm("Clear activity log? Lifetime stats will be kept.")) {
+    chrome.runtime.sendMessage({ type: "CLEAR_PROOFS" }, () => {
+      loadProofs();
+    });
+  }
+});
+
+exportBtn.addEventListener("click", () => {
+  exportStats();
+});
+
+const exportJsonBtn = document.getElementById("export-json-btn");
+if (exportJsonBtn) {
+  exportJsonBtn.addEventListener("click", () => {
+    exportStatsJSON();
+  });
+}
+
+if (btnMonthly) {
+  btnMonthly.addEventListener("click", () => {
+    chrome.tabs.create({ url: "https://shieldvault.site/api/checkout/quick?plan=monthly" });
+  });
+}
+
+if (btnLifetime) {
+  btnLifetime.addEventListener("click", () => {
+    chrome.tabs.create({ url: "https://shieldvault.site/api/checkout/quick?plan=lifetime" });
+  });
+}
+
+btnAlreadyPurchased.addEventListener("click", () => {
+  showView("input");
+  licenseKeyInput.value = "";
+  licenseError.style.display = "none";
+  licenseKeyInput.focus();
+});
+
+btnCancelActivate.addEventListener("click", () => {
+  showView("upgrade");
+});
+
+btnActivate.addEventListener("click", () => {
+  const key = licenseKeyInput.value.trim();
+  if (!key) {
+    licenseError.textContent = "Please enter a license key.";
+    licenseError.style.display = "block";
+    return;
+  }
+  activateLicense(key);
+});
+
+licenseKeyInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    btnActivate.click();
+  }
+});
+
+btnResetPro.addEventListener("click", () => {
+  if (confirm("Deactivate your Pro status?")) {
+    chrome.storage.local.remove(["shieldvault_pro", "shieldvault_license_key", "shieldvault_tier"], () => {
+      isProUser = false;
+      showView("upgrade");
+      loadProofs();
+    });
+  }
+});
+
+// ================================
+// INIT
+// ================================
+loadProStatus();
+loadSettingsUI();
+setupFirstRunDemo();
+loadCalloutState();
+loadPausedSites();
+
+// Live-update popup when proofs or stats change (replaces polling)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.shieldvault_proofs || changes.shieldvault_stats || changes.shieldvault_paused_domains) {
+    loadProofs();
+  }
+  if (changes.shieldvault_pro || changes.shieldvault_license_key || changes.shieldvault_tier) {
+    loadProStatus();
+  }
+  if (changes.shieldvault_paused_domains) {
+    renderPausedSites(changes.shieldvault_paused_domains.newValue || []);
+  }
+});
