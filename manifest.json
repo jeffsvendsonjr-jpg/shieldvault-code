@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ShieldVault - AI Chat Secret Protection",
   "short_name": "ShieldVault",
-  "version": "1.2.2",
+  "version": "1.7.1",
   "description": "Detects API keys in AI chats and prevents regrettable behavior (angry posts, passive-aggression) before you hit send. 100% local.",
   "icons": {
     "16": "icons/icon16.png",
