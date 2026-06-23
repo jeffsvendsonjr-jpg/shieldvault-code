@@ -161,6 +161,20 @@ loadSettings();
 loadBehavioralQuota();
 
 // ================================
+// MASTER TOGGLE (v1.7.0)
+// ================================
+let SHIELDVAULT_ENABLED = true;
+
+function loadMasterEnabled() {
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+  chrome.storage.local.get(["shieldvault_enabled"], (result) => {
+    SHIELDVAULT_ENABLED = result.shieldvault_enabled !== false;
+  });
+}
+
+loadMasterEnabled();
+
+// ================================
 // PAUSED DOMAINS (per-domain silence)
 // ================================
 let PAUSED_DOMAINS = new Set();
@@ -203,6 +217,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (changes.shieldvault_paused_domains) {
     PAUSED_DOMAINS = new Set(changes.shieldvault_paused_domains.newValue || []);
+  }
+  if (changes.shieldvault_enabled) {
+    SHIELDVAULT_ENABLED = changes.shieldvault_enabled.newValue !== false;
   }
 });
 
@@ -1122,6 +1139,9 @@ function escapeForHtml(str) {
 //   - Behavioral: paywall fires only when free quota exhausted
 // ================================
 function handleDetection(text, el, vector, event) {
+  // --- Master toggle check ---
+  if (!SHIELDVAULT_ENABLED) return false;
+
   // --- Per-domain silence check ---
   if (PAUSED_DOMAINS.has(currentHostname())) return false;
 
@@ -1295,6 +1315,7 @@ document.addEventListener(
     inputDebounceTimer = setTimeout(() => {
       const targetEl = lastDebouncedEl;
       if (!targetEl) return;
+      if (!SHIELDVAULT_ENABLED) return;
       if (PAUSED_DOMAINS.has(currentHostname())) return;
       const value = getValue(targetEl);
       if (!value) return;

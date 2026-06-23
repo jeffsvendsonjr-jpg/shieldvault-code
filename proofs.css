@@ -857,3 +857,76 @@ footer {
 .demo-settings-link:hover {
   text-decoration: underline;
 }
+
+/* ================================
+   STATUS BAR + MASTER TOGGLE (v1.7.0)
+   ================================ */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #6b7280;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.status-dot.green {
+  background: #34d399;
+  box-shadow: 0 0 5px rgba(52, 211, 153, 0.55);
+}
+
+.status-dot.red {
+  background: #f87171;
+  box-shadow: 0 0 5px rgba(248, 113, 113, 0.55);
+}
+
+.status-dot.grey {
+  background: #6b7280;
+  box-shadow: none;
+}
+
+.status-text {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.master-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.master-toggle-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.master-toggle-label-wrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.master-toggle-label-wrap .toggle-input {
+  display: none;
+}
+

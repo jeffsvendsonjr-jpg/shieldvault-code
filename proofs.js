@@ -732,6 +732,85 @@ btnResetPro.addEventListener("click", () => {
 });
 
 // ================================
+// MASTER TOGGLE + STATUS INDICATOR (v1.7.0)
+// ================================
+const masterToggleInput = document.getElementById("master-toggle");
+const masterToggleLabelEl = document.getElementById("master-toggle-label");
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
+
+let currentTabHostname = "";
+
+// Resolve the hostname of the active tab so we can show paused-domain state
+chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  if (tabs && tabs[0] && tabs[0].url) {
+    try {
+      currentTabHostname = new URL(tabs[0].url).hostname;
+    } catch (_) {}
+  }
+  updateStatusIndicator();
+});
+
+function loadMasterToggle() {
+  chrome.storage.local.get(["shieldvault_enabled"], (result) => {
+    const enabled = result.shieldvault_enabled !== false;
+    if (masterToggleInput) masterToggleInput.checked = enabled;
+    if (masterToggleLabelEl) masterToggleLabelEl.textContent = enabled ? "Protection on" : "Protection off";
+    updateStatusIndicator();
+  });
+}
+
+function updateStatusIndicator() {
+  if (!statusDot || !statusText) return;
+  chrome.storage.local.get(
+    ["shieldvault_enabled", "shieldvault_paused_domains", "shieldvault_proofs"],
+    (result) => {
+      const enabled = result.shieldvault_enabled !== false;
+      const pausedDomains = Array.isArray(result.shieldvault_paused_domains)
+        ? result.shieldvault_paused_domains
+        : [];
+      const proofs = Array.isArray(result.shieldvault_proofs)
+        ? result.shieldvault_proofs
+        : [];
+      const isDomainPaused = currentTabHostname && pausedDomains.includes(currentTabHostname);
+
+      if (!enabled) {
+        statusDot.className = "status-dot grey";
+        statusText.textContent = "Protection disabled";
+        return;
+      }
+
+      if (isDomainPaused) {
+        statusDot.className = "status-dot grey";
+        statusText.textContent = `Paused on ${currentTabHostname}`;
+        return;
+      }
+
+      // Red if there was a protection event within the last 5 minutes
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      if (proofs.length > 0 && proofs[0].time > fiveMinutesAgo) {
+        statusDot.className = "status-dot red";
+        statusText.textContent = "Blocked recently";
+        return;
+      }
+
+      statusDot.className = "status-dot green";
+      statusText.textContent = "Actively protecting";
+    }
+  );
+}
+
+if (masterToggleInput) {
+  masterToggleInput.addEventListener("change", () => {
+    const enabled = masterToggleInput.checked;
+    chrome.storage.local.set({ shieldvault_enabled: enabled }, () => {
+      if (masterToggleLabelEl) masterToggleLabelEl.textContent = enabled ? "Protection on" : "Protection off";
+      updateStatusIndicator();
+    });
+  });
+}
+
+// ================================
 // INIT
 // ================================
 loadProStatus();
@@ -739,6 +818,7 @@ loadSettingsUI();
 setupFirstRunDemo();
 loadCalloutState();
 loadPausedSites();
+loadMasterToggle();
 
 // Live-update popup when proofs or stats change (replaces polling)
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -752,4 +832,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.shieldvault_paused_domains) {
     renderPausedSites(changes.shieldvault_paused_domains.newValue || []);
   }
+  if (changes.shieldvault_enabled || changes.shieldvault_proofs || changes.shieldvault_paused_domains) {
+    updateStatusIndicator();
+    if (changes.shieldvault_enabled && masterToggleInput) {
+      const enabled = changes.shieldvault_enabled.newValue !== false;
+      masterToggleInput.checked = enabled;
+      if (masterToggleLabelEl) masterToggleLabelEl.textContent = enabled ? "Protection on" : "Protection off";
+    }
+  }
 });
+
