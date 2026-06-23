@@ -16,6 +16,19 @@
           <button class="tab-btn" id="tab-settings" data-tab="settings">Settings</button>
         </div>
       </div>
+      <div class="status-bar" id="status-bar">
+        <div class="status-indicator">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="status-text" id="status-text">Checking...</span>
+        </div>
+        <div class="master-toggle-wrap">
+          <span class="master-toggle-label" id="master-toggle-label">Protection on</span>
+          <label class="master-toggle-label-wrap">
+            <input type="checkbox" class="toggle-input" id="master-toggle" checked aria-label="Enable ShieldVault protection">
+            <span class="toggle-switch"></span>
+          </label>
+        </div>
+      </div>
     </header>
 
     <!-- ACTIVITY TAB -->
@@ -233,7 +246,7 @@
     </div>
 
     <footer>
-      ShieldVault v1.6.2
+      ShieldVault v1.7.0
     </footer>
   </div>
   <script src="proofs.js"></script>
