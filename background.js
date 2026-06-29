@@ -109,16 +109,15 @@ function formatBadge(count) {
   return count > 999 ? '999+' : String(count);
 }
 
-async function bumpBadge() {
-  try {
-    const stored = await chrome.storage.local.get([SHIELDVAULT_BADGE_COUNT_KEY]);
-    const count = (Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0) + 1;
-    await chrome.storage.local.set({ [SHIELDVAULT_BADGE_COUNT_KEY]: count });
-    await chrome.action.setBadgeBackgroundColor({ color: '#4c6fff' });
-    await chrome.action.setBadgeText({ text: formatBadge(count) });
-  } catch (_) {
-    // Badge is best-effort.
-  }
+// Serialize proof + badge writes. Both are read-modify-write cycles against
+// chrome.storage.local; without a queue, back-to-back SHIELDVAULT_PREVENTED
+// messages can read the same stale state and lose a proof or badge increment.
+let proofWriteQueue = Promise.resolve();
+
+function enqueueProofWrite(work) {
+  const next = proofWriteQueue.then(work, work);
+  proofWriteQueue = next.catch(() => {});
+  return next;
 }
 
 async function restoreBadge() {
@@ -134,17 +133,36 @@ async function restoreBadge() {
 }
 
 async function storeProof(message, sender) {
-  const proof = proofFromMessage(message, sender);
-  const existing = await getStoredProofs();
-  const proofs = [proof, ...existing].slice(0, SHIELDVAULT_MAX_PROOFS);
-  await chrome.storage.local.set({ [SHIELDVAULT_PROOFS_KEY]: proofs });
-  await bumpBadge();
-  try {
-    chrome.runtime.sendMessage({ type: 'SHIELDVAULT_PROOF_STORED', proof });
-  } catch (_) {
-    // Popup may be closed.
-  }
-  return proof;
+  return enqueueProofWrite(async () => {
+    const proof = proofFromMessage(message, sender);
+    const stored = await chrome.storage.local.get([
+      SHIELDVAULT_PROOFS_KEY,
+      SHIELDVAULT_BADGE_COUNT_KEY,
+    ]);
+    const existing = Array.isArray(stored[SHIELDVAULT_PROOFS_KEY])
+      ? stored[SHIELDVAULT_PROOFS_KEY]
+      : [];
+    const proofs = [proof, ...existing].slice(0, SHIELDVAULT_MAX_PROOFS);
+    const count = (Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0) + 1;
+
+    // Proof list and badge count commit together in one serialized write.
+    await chrome.storage.local.set({
+      [SHIELDVAULT_PROOFS_KEY]: proofs,
+      [SHIELDVAULT_BADGE_COUNT_KEY]: count,
+    });
+    try {
+      await chrome.action.setBadgeBackgroundColor({ color: '#4c6fff' });
+      await chrome.action.setBadgeText({ text: formatBadge(count) });
+    } catch (_) {
+      // Badge is best-effort.
+    }
+    try {
+      chrome.runtime.sendMessage({ type: 'SHIELDVAULT_PROOF_STORED', proof });
+    } catch (_) {
+      // Popup may be closed.
+    }
+    return proof;
+  });
 }
 
 async function ensureShieldVaultDefaults() {

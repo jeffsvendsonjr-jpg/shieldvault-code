@@ -370,6 +370,29 @@ function creditCardMatches(text) {
   return candidates.filter(luhnValid);
 }
 
+// ISO 13616 / ISO 7064 mod-97-10 check. Rejects bare alphanumerics like
+// "US2024010100000" that merely look IBAN-shaped.
+function ibanValid(value) {
+  const iban = String(value || "").toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
+  // Move the first four chars to the end, then convert letters to digits
+  // (A=10 … Z=35) and take the whole number mod 97 — valid IBANs yield 1.
+  const rearranged = iban.slice(4) + iban.slice(0, 4);
+  let remainder = 0;
+  for (const ch of rearranged) {
+    const code = ch >= "A" && ch <= "Z" ? String(ch.charCodeAt(0) - 55) : ch;
+    for (const digit of code) {
+      remainder = (remainder * 10 + Number(digit)) % 97;
+    }
+  }
+  return remainder === 1;
+}
+
+function ibanMatches(text) {
+  const candidates = String(text || "").match(/\b[A-Z]{2}\d{2}[A-Za-z0-9]{11,30}\b/g) || [];
+  return candidates.filter(ibanValid);
+}
+
 // ================================
 // DETECTION
 // ================================
@@ -426,8 +449,10 @@ function detectSecretMatches(text) {
     // Phone numbers — require separators or a country prefix so bare digit runs
     // (IDs, order numbers) don't trip it.
     collectMatches(text, /(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/, "Phone number", matches);
-    // IBAN — two-letter country code, two check digits, then the account body.
-    collectMatches(text, /\b[A-Z]{2}\d{2}[A-Za-z0-9]{11,30}\b/, "IBAN / bank account", matches);
+    // IBAN — checksum-validated so look-alike identifiers aren't redacted.
+    for (const iban of ibanMatches(text)) {
+      matches.push({ name: "IBAN / bank account", value: iban });
+    }
   }
 
   if (SHIELDVAULT_SETTINGS.clientDataGuard && /\b(?:client data|customer data|confidential client|internal only)\b/i.test(text)) {
@@ -634,10 +659,14 @@ function blockedOutcome(detectorNames) {
   return "Secret protected";
 }
 
-function showBlockedOverlay(el, text, detectorNames) {
+function showBlockedOverlay(el, text, detectorNames, options) {
   const previous = document.getElementById("shieldvault-blocked-overlay");
   if (previous) previous.remove();
 
+  // For paste/drop the secret was never inserted into the field (the event was
+  // cancelled), so restoring `text` would clobber whatever the user already
+  // had. In that case we only register the bypass and ask them to retry.
+  const restoreOnAllow = !(options && options.restoreOnAllow === false);
   let blockedText = String(text || "");
   const expiresAt = Date.now() + SHIELDVAULT_BYPASS_WINDOW_MS;
   const accent = surfaceAccentColor();
@@ -680,7 +709,9 @@ function showBlockedOverlay(el, text, detectorNames) {
   overlay.appendChild(detectorList);
 
   const scope = document.createElement("div");
-  scope.textContent = "Undo is limited to this site, this field, and this exact content.";
+  scope.textContent = restoreOnAllow
+    ? "Undo is limited to this site, this field, and this exact content."
+    : "Allow once, then retry the paste or drop within the window. Scoped to this site, field, and exact content.";
   scope.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:12px";
   overlay.appendChild(scope);
 
@@ -701,7 +732,7 @@ function showBlockedOverlay(el, text, detectorNames) {
 
   const allowOnce = document.createElement("button");
   allowOnce.type = "button";
-  allowOnce.textContent = "Undo / allow once (45s)";
+  allowOnce.textContent = restoreOnAllow ? "Undo / allow once (45s)" : "Allow once (45s)";
   allowOnce.style.cssText = [
     "padding:7px 10px",
     "border-radius:7px",
@@ -724,7 +755,9 @@ function showBlockedOverlay(el, text, detectorNames) {
       return;
     }
     addScopedBypass(el, blockedText);
-    setValue(el, blockedText);
+    // Only re-insert when the field was redacted in place (typed/submit). For
+    // paste/drop, registering the bypass is enough — the user retries the action.
+    if (restoreOnAllow) setValue(el, blockedText);
     el.focus();
     blockedText = "";
     overlay.remove();
@@ -737,7 +770,9 @@ function showBlockedOverlay(el, text, detectorNames) {
     }
     const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
     if (remaining > 0) {
-      allowOnce.textContent = `Undo / allow once (${remaining}s)`;
+      allowOnce.textContent = restoreOnAllow
+        ? `Undo / allow once (${remaining}s)`
+        : `Allow once (${remaining}s)`;
     }
   }, 1000);
 
@@ -890,7 +925,11 @@ function handleDetection(text, el, vector, event) {
       // Clear any active bypass before hard-blocking
       delete el.dataset.shieldvaultBypass;
       if (redactable.length) hardRedact(el);
-      showBlockedOverlay(el, text, names);
+      // paste/drop were cancelled before insertion, so allow-once must not
+      // restore the fragment over the user's existing field content.
+      showBlockedOverlay(el, text, names, {
+        restoreOnAllow: vector !== "drop" && vector !== "paste",
+      });
     }
 
     notifyBackground(names, vector, "secret");
@@ -919,7 +958,9 @@ function handleDetection(text, el, vector, event) {
     // Enter key would be swallowed with no modal and no way through (soft-lock).
     // Log it for their activity history and let the message go.
     if (USER_TIER !== "plus") {
-      notifyBackground(warnings, vector, "behavioral");
+      // Message is allowed to send, so don't record it as a prevented event —
+      // on the input-fallback path that would also spam history/badge on every
+      // keystroke. Just log locally for development.
       devWarn(`Behavioral warning (log only, non-Plus): ${warnings.join(", ")} via ${vector}`);
       return false;
     }

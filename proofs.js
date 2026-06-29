@@ -175,17 +175,16 @@
   document.getElementById('clear-btn').addEventListener('click', function () {
     try {
       chrome.runtime.sendMessage({ type: 'SHIELDVAULT_CLEAR_PROOFS' }, function (response) {
+        // Only clear the popup view if the background actually wiped storage and
+        // reset the badge — otherwise the UI would desync from persisted state.
         if (chrome.runtime.lastError || !response || response.ok !== true) {
-          proofs = [];
-          renderProofs();
           return;
         }
         proofs = [];
         renderProofs();
       });
     } catch (_) {
-      proofs = [];
-      renderProofs();
+      // Leave history intact on messaging failure.
     }
   });
 
