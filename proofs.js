@@ -2,8 +2,6 @@
   'use strict';
 
   const API_BASE = 'https://shieldvault.site';
-  const STRIPE_KEY_CACHE = 'shieldvault_stripe_pk_cache';
-  const STRIPE_KEY_TTL = 86400000; // 24 hours
 
   // ── Proof list ──────────────────────────────────────────────────────────────
 
@@ -162,14 +160,6 @@
     }
 
     renderSummary();
-  }
-
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   document.getElementById('clear-btn').addEventListener('click', function () {
@@ -363,45 +353,6 @@
   }
 
   applyProState();
-
-  // ── Stripe publishable key — lazy + cached ───────────────────────────────────
-
-  let _stripeKeyPromise = null;
-
-  function getStripePublishableKey() {
-    if (_stripeKeyPromise) return _stripeKeyPromise;
-
-    _stripeKeyPromise = (async function () {
-      // Check cache first
-      try {
-        const cached = await new Promise((resolve) => {
-          chrome.storage.local.get([STRIPE_KEY_CACHE], (result) => resolve(result[STRIPE_KEY_CACHE] || null));
-        });
-        if (cached && cached.pk && Date.now() - cached.ts < STRIPE_KEY_TTL) {
-          return cached.pk;
-        }
-      } catch (_) {}
-
-      // Fetch from server only when actually needed
-      const res = await fetch(API_BASE + '/api/stripe/publishable-key', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load payment info (' + res.status + ')');
-      const data = await res.json();
-      const pk = data.publishableKey || data.publishable_key;
-      if (!pk) throw new Error('Invalid payment configuration');
-
-      // Cache for 24 h
-      try {
-        chrome.storage.local.set({ [STRIPE_KEY_CACHE]: { pk, ts: Date.now() } });
-      } catch (_) {}
-
-      return pk;
-    })();
-
-    // Don't cache a rejected promise — allow retry on next click
-    _stripeKeyPromise.catch(function () { _stripeKeyPromise = null; });
-
-    return _stripeKeyPromise;
-  }
 
   // ── Upgrade buttons ──────────────────────────────────────────────────────────
 
