@@ -122,6 +122,21 @@ async function disableSubjectiveWarning(type) {
 // ================================
 // PATTERN LIBRARY
 // ================================
+/**
+ * Secret detectors. Each entry is `{ name, pattern }` where `pattern` is a
+ * RegExp matched against field text.
+ *
+ * Contract & house rules (see STANDARDS.md):
+ * - Patterns must be specific enough to avoid redacting ordinary content.
+ *   Low-entropy or label-less shapes (bare UUIDs, 40-char base64) are
+ *   context-bound — require a nearby label — rather than matched raw.
+ * - Public-by-design identifiers (publishable keys, OAuth client IDs, account
+ *   SIDs) are intentionally NOT detected; flagging them is a false positive.
+ * - Format-checkable values (cards, IBANs) are validated separately before
+ *   redaction — see {@link luhnValid} / {@link ibanValid}.
+ *
+ * @type {Array<{name: string, pattern: RegExp}>}
+ */
 const DETECTORS = [
   // OpenAI
   { name: "OpenAI API Key", pattern: /sk-[A-Za-z0-9]{20,}/ },
@@ -346,6 +361,13 @@ function isMostlyCaps(text) {
   return upper / letters.length >= 0.85;
 }
 
+/**
+ * Luhn (mod-10) check used to confirm a digit run is a plausible payment card
+ * before redacting, so arbitrary 13–19 digit numbers aren't flagged.
+ *
+ * @param {string} value  Candidate string (non-digits ignored).
+ * @returns {boolean} true if 13–19 digits and the checksum passes.
+ */
 function luhnValid(value) {
   const digits = String(value || "").replace(/\D/g, "");
   if (digits.length < 13 || digits.length > 19) return false;
@@ -370,8 +392,14 @@ function creditCardMatches(text) {
   return candidates.filter(luhnValid);
 }
 
-// ISO 13616 / ISO 7064 mod-97-10 check. Rejects bare alphanumerics like
-// "US2024010100000" that merely look IBAN-shaped.
+/**
+ * Validate an IBAN with the ISO 13616 / ISO 7064 mod-97-10 checksum. Rejects
+ * bare alphanumerics like "US2024010100000" that merely look IBAN-shaped, so
+ * they aren't redacted as bank accounts.
+ *
+ * @param {string} value  Candidate IBAN (spaces and case ignored).
+ * @returns {boolean} true if the structure and checksum are valid.
+ */
 function ibanValid(value) {
   const iban = String(value || "").toUpperCase().replace(/\s+/g, "");
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
@@ -416,9 +444,15 @@ function collectMatches(text, pattern, name, out) {
   }
 }
 
-// Returns [{ name, value }]. value is the matched substring to redact, or null
-// for signal-only matches (large paste, client-data keyword) that have no single
-// token to remove. Each guard is independent — there is no master switch.
+/**
+ * Run every enabled secret/PII guard over `text` and return the matches.
+ *
+ * @param {string} text  Field contents to scan.
+ * @returns {Array<{name: string, value: string|null}>} One entry per match.
+ *   `value` is the exact substring to redact; `null` marks a signal-only match
+ *   (large paste, client-data keyword) that has no single token to remove.
+ *   Each guard is gated by its own setting — there is no master switch.
+ */
 function detectSecretMatches(text) {
   if (!text || typeof text !== "string") return [];
 

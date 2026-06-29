@@ -47,6 +47,22 @@ function normalizeDetectors(detectors) {
     .slice(0, 12);
 }
 
+/**
+ * Build a stored Proof from a SHIELDVAULT_PREVENTED message. A Proof is the
+ * only thing ShieldVault persists about a block — deliberately metadata-only,
+ * never the matched secret content.
+ *
+ * @typedef {Object} Proof
+ * @property {number} timestamp  When the block happened (ms epoch).
+ * @property {string} domain     Originating site, derived from the sender tab.
+ * @property {string} category   'secret' or 'behavioral'.
+ * @property {string} vector     How it was caught (typed/paste/drop/submit/...).
+ * @property {string[]} detectors Detector names that fired (capped, truncated).
+ *
+ * @param {{domain?: string, category?: string, vector?: string, detectors?: string[]}} message
+ * @param {chrome.runtime.MessageSender} sender
+ * @returns {Proof}
+ */
 function proofFromMessage(message, sender) {
   return {
     timestamp: Date.now(),
@@ -64,6 +80,14 @@ async function getStoredProofs() {
     : [];
 }
 
+/**
+ * Coerce the stored paused-domains value into a plain string[]. Accepts both the
+ * current array form and a legacy `{ [domain]: boolean }` map so old installs
+ * upgrade cleanly.
+ *
+ * @param {string[] | Record<string, boolean> | undefined} value
+ * @returns {string[]} bare hostnames (www-stripped) that are paused.
+ */
 function normalizePausedDomains(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (value && typeof value === 'object') {
@@ -81,7 +105,13 @@ async function setPausedDomains(domains) {
   await chrome.storage.local.set({ [SHIELDVAULT_PAUSED_DOMAINS_KEY]: domains });
 }
 
-// Toggle a domain's paused state. Returns the new state for that domain.
+/**
+ * Toggle protection for a single domain and persist the result.
+ *
+ * @param {string} domain  Hostname to flip (www-stripped, length-capped).
+ * @returns {Promise<{domain: string, paused: boolean, pausedDomains: string[]}>}
+ *   The domain's new paused state and the full updated list.
+ */
 async function togglePausedDomain(domain) {
   const clean = safeText(domain, 200).replace(/^www\./, '');
   if (!clean) {
@@ -132,6 +162,15 @@ async function restoreBadge() {
   }
 }
 
+/**
+ * Persist a proof and bump the badge as one serialized read-modify-write.
+ * Runs through {@link enqueueProofWrite} so concurrent SHIELDVAULT_PREVENTED
+ * messages can't race and drop an entry. Also broadcasts SHIELDVAULT_PROOF_STORED.
+ *
+ * @param {{domain?: string, category?: string, vector?: string, detectors?: string[]}} message
+ * @param {chrome.runtime.MessageSender} sender
+ * @returns {Promise<Proof>} the stored proof.
+ */
 async function storeProof(message, sender) {
   return enqueueProofWrite(async () => {
     const proof = proofFromMessage(message, sender);
@@ -195,6 +234,34 @@ chrome.runtime.onStartup.addListener(() => {
   restoreBadge();
 });
 
+/**
+ * Central runtime message router for the service worker.
+ *
+ * This is the IPC contract between the content script / popup and the
+ * background. Every message is `{ type: string, ...payload }`; handlers that
+ * answer asynchronously return `true` to keep the `sendResponse` channel open.
+ *
+ * Message types:
+ * - `SHIELDVAULT_PREVENTED`  (content → bg): a block occurred. Payload
+ *     `{ domain?, category?, vector?, detectors? }`; persists a proof, bumps the
+ *     badge, and responds `{ ok, proof }`.
+ * - `SHIELDVAULT_GET_PROOFS` (popup → bg): responds
+ *     `{ proofs: Proof[], pausedDomains: string[] }`.
+ * - `SHIELDVAULT_CLEAR_PROOFS` (popup → bg): wipes history + badge, responds
+ *     `{ ok, proofs: [] }`.
+ * - `SHIELDVAULT_GET_PAUSE_STATE` (popup → bg): payload `{ domain }`, responds
+ *     `{ paused: boolean, pausedDomains: string[] }`.
+ * - `SHIELDVAULT_TOGGLE_PAUSE` (popup → bg): payload `{ domain }`, flips pause
+ *     for that domain, responds `{ ok, domain, paused, pausedDomains }`.
+ *
+ * The worker also *broadcasts* `SHIELDVAULT_PROOF_STORED` `{ proof }` when a
+ * proof is saved, so an open popup can update live.
+ *
+ * @param {{type: string, [key: string]: unknown}} message
+ * @param {chrome.runtime.MessageSender} sender
+ * @param {(response?: unknown) => void} sendResponse
+ * @returns {boolean} true when responding asynchronously.
+ */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') return false;
 
