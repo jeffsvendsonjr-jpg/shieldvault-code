@@ -31,6 +31,11 @@ chrome.storage.local.get(["shieldvault_tier"], (result) => {
   USER_TIER = result.shieldvault_tier || "basic";
 });
 
+const SHIELDVAULT_BYPASS_WINDOW_MS = 45000;
+const SHIELDVAULT_ACTIVE_BYPASSES = [];
+const SHIELDVAULT_FIELD_IDS = new WeakMap();
+let SHIELDVAULT_FIELD_ID_SEQ = 0;
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.shieldvault_tier) {
     USER_TIER = changes.shieldvault_tier.newValue || "basic";
@@ -79,16 +84,28 @@ async function disableSubjectiveWarning(type) {
 }
 
 // ================================
-// PATTERN LIBRARY (46 detectors)
+// PATTERN LIBRARY
 // ================================
 const DETECTORS = [
   // OpenAI
   { name: "OpenAI API Key", pattern: /sk-[A-Za-z0-9]{20,}/ },
   { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{20,}/ },
+
+  // AI providers and model platforms
+  { name: "Anthropic API Key", pattern: /sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{40,}/ },
+  { name: "Hugging Face Token", pattern: /hf_[A-Za-z0-9]{30,}/ },
+  { name: "Azure OpenAI Key", pattern: /(?:azure[_\s-]*openai|api[-_\s]?key)[^\n\r]{0,80}['"]?[A-Za-z0-9]{32}['"]?/i },
+  { name: "Cohere API Key", pattern: /(?:cohere[_\s-]*api[_\s-]*key|CO_API_KEY)[^\n\r]{0,40}['"]?[A-Za-z0-9_-]{30,}['"]?/i },
+  { name: "Mistral API Key", pattern: /(?:mistral[_\s-]*api[_\s-]*key|MISTRAL_API_KEY)[^\n\r]{0,40}['"]?[A-Za-z0-9_-]{30,}['"]?/i },
+  { name: "Groq API Key", pattern: /gsk_[A-Za-z0-9]{40,}/ },
+  { name: "Perplexity API Key", pattern: /pplx-[A-Za-z0-9]{24,}/ },
+  { name: "OpenRouter API Key", pattern: /sk-or-v1-[A-Za-z0-9_-]{32,}/ },
   
   // AWS
   { name: "AWS Access Key ID", pattern: /AKIA[0-9A-Z]{16}/ },
-  { name: "AWS Secret Access Key", pattern: /(?<![A-Za-z0-9\/+=])[A-Za-z0-9\/+=]{40}(?![A-Za-z0-9\/+=])/ },
+  // Context-bound: a bare 40-char base64 string matches git SHAs, hashes, etc.
+  // Require an explicit aws-secret label nearby to avoid wiping unrelated content.
+  { name: "AWS Secret Access Key", pattern: /aws[_\s-]*secret[_\s-]*access[_\s-]*key[^\n\r]{0,40}['"]?[A-Za-z0-9\/+=]{40}['"]?/i },
   { name: "AWS Session Token", pattern: /FwoGZXIvYXdzE[A-Za-z0-9\/+=]+/ },
   
   // GitHub
@@ -107,14 +124,22 @@ const DETECTORS = [
   // Stripe
   { name: "Stripe Live Secret", pattern: /sk_live_[A-Za-z0-9]{24,}/ },
   { name: "Stripe Test Secret", pattern: /sk_test_[A-Za-z0-9]{24,}/ },
-  { name: "Stripe Live Publishable", pattern: /pk_live_[A-Za-z0-9]{24,}/ },
-  { name: "Stripe Test Publishable", pattern: /pk_test_[A-Za-z0-9]{24,}/ },
+  // Note: pk_live_/pk_test_ (publishable keys) are intentionally NOT detected —
+  // they are designed to be public and flagging them is a false positive.
   { name: "Stripe Restricted Key", pattern: /rk_live_[A-Za-z0-9]{24,}/ },
   { name: "Stripe Webhook Secret", pattern: /whsec_[A-Za-z0-9]{32,}/ },
   
   // Google
   { name: "Google API Key", pattern: /AIza[A-Za-z0-9_-]{35}/ },
-  { name: "Google OAuth ID", pattern: /[0-9]+-[A-Za-z0-9_]{32}\.apps\.googleusercontent\.com/ },
+  // Note: OAuth client IDs (...apps.googleusercontent.com) are public identifiers,
+  // not secrets, so they are intentionally not detected.
+
+  // Cloud platforms and app hosting
+  { name: "Vercel Token", pattern: /vercel_[A-Za-z0-9]{24,}/ },
+  { name: "Netlify Personal Access Token", pattern: /nfp_[A-Za-z0-9]{30,}/ },
+  { name: "Cloudflare API Token", pattern: /(?:cloudflare|cf)[^\n\r]{0,40}(?:api[_\s-]*token|api[_\s-]*key|token)\s*[:=]\s*['"]?[A-Za-z0-9_-]{20,}['"]?/i },
+  { name: "Supabase Service Role Key", pattern: /(?:supabase[_\s-]*service[_\s-]*role|service_role)[^\n\r]{0,40}eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/i },
+  { name: "Firebase Service Account", pattern: /"type"\s*:\s*"service_account"[\s\S]{0,1500}"private_key"\s*:\s*"-----BEGIN PRIVATE KEY-----/ },
   
   // Slack
   { name: "Slack Bot Token", pattern: /xoxb-[0-9]{10,}-[0-9]{10,}-[A-Za-z0-9]{24}/ },
@@ -133,8 +158,8 @@ const DETECTORS = [
   { name: "PyPI Token", pattern: /pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}/ },
   
   // Twilio
-  { name: "Twilio API Key", pattern: /SK[A-Za-z0-9]{32}/ },
-  { name: "Twilio Account SID", pattern: /AC[A-Za-z0-9]{32}/ },
+  { name: "Twilio API Key", pattern: /SK[0-9a-fA-F]{32}/ },
+  // Note: Account SID (AC...) is a public account identifier, not a secret.
   
   // SendGrid
   { name: "SendGrid API Key", pattern: /SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/ },
@@ -142,8 +167,20 @@ const DETECTORS = [
   // Mailchimp
   { name: "Mailchimp API Key", pattern: /[A-Za-z0-9]{32}-us[0-9]{1,2}/ },
   
-  // Heroku
-  { name: "Heroku API Key", pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/ },
+  // Heroku — context-bound: a bare UUID matches request IDs, React keys, etc.
+  // Require a heroku label nearby to avoid wiping unrelated content.
+  { name: "Heroku API Key", pattern: /heroku[^\n\r]{0,40}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i },
+
+  // SaaS and product APIs
+  { name: "Notion Integration Token", pattern: /ntn_[A-Za-z0-9]{40,}/ },
+  { name: "Linear API Key", pattern: /lin_api_[A-Za-z0-9]{40,}/ },
+  // Note: legacy Airtable "key..." API keys are deprecated and the pattern is
+  // indistinguishable from ordinary words (e.g. "keyboard..."). Detect the
+  // current Personal Access Token format instead.
+  { name: "Airtable Personal Access Token", pattern: /pat[A-Za-z0-9]{14}\.[A-Za-z0-9]{64}/ },
+  { name: "Shopify Access Token", pattern: /shpat_[A-Za-z0-9]{32}/ },
+  { name: "Sentry Auth Token", pattern: /sntrys_[A-Za-z0-9_-]{20,}/ },
+  { name: "PostHog Personal API Key", pattern: /phx_[A-Za-z0-9_-]{30,}/ },
   
   // Database URLs
   { name: "PostgreSQL URL", pattern: /postgres(?:ql)?:\/\/[^\s'"]+:[^\s'"]+@[^\s'"]+/ },
@@ -172,30 +209,48 @@ const DETECTORS = [
 // BEHAVIORAL PATTERN LIBRARY
 // ================================
 const BEHAVIORAL_DETECTORS = [
-  { name: "Shouting (all-caps)", pattern: /^[A-Z\s]{15,}$/ },
+  { name: "Shouting (all-caps)", test: isMostlyCaps },
   { name: "Aggressive Punctuation", pattern: /[!]{4,}|\?[!]{2,}/ },
   { name: "Passive Aggressive", pattern: /per my last email|for future reference|with all due respect/i },
   { name: "Hostile Opener", pattern: /^(you people|what the hell|are you serious|this is ridiculous|i can't believe you)/i },
   { name: "Dismissive / Condescending", pattern: /clearly you don't understand|obviously you haven't|do i really need to explain/i },
   { name: "Rage-quit threat", pattern: /i('m| am) done with (this|you)[^a-z]|i quit[^a-z]|screw this/i },
+  { name: "Insult / name-calling", pattern: /\b(idiot|moron|incompetent|pathetic|useless)\b/i },
+  { name: "Threatening escalation", pattern: /\b(i'?ll report you|i will report you|you'?ll regret|this will be escalated)\b/i },
 ];
 
 // ================================
 // HELPERS
 // ================================
-function getActiveEditable() {
-  const el = document.activeElement;
+function deepActiveElement() {
+  let active = document.activeElement;
+  while (active && active.shadowRoot && active.shadowRoot.activeElement) {
+    active = active.shadowRoot.activeElement;
+  }
+  return active;
+}
+
+function resolveEditable(el) {
   if (!el) return null;
 
   if (
     el.tagName === "INPUT" ||
     el.tagName === "TEXTAREA" ||
-    el.isContentEditable
+    el.isContentEditable ||
+    el.getAttribute("role") === "textbox"
   ) {
     return el;
   }
 
+  if (typeof el.closest === "function") {
+    return el.closest("input, textarea, [contenteditable='true'], [role='textbox']");
+  }
+
   return null;
+}
+
+function getActiveEditable() {
+  return resolveEditable(deepActiveElement());
 }
 
 function getValue(el) {
@@ -203,8 +258,8 @@ function getValue(el) {
   if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
     return el.value || "";
   }
-  if (el.isContentEditable) {
-    return el.innerText || "";
+  if (el.isContentEditable || el.getAttribute("role") === "textbox") {
+    return el.innerText || el.textContent || "";
   }
   return "";
 }
@@ -228,7 +283,7 @@ function setValue(el, value) {
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
     
-  } else if (el.isContentEditable) {
+  } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
     el.innerHTML = "";
     el.textContent = value;
     
@@ -240,39 +295,96 @@ function setValue(el, value) {
   }
 }
 
+function isMostlyCaps(text) {
+  const letters = String(text || "").match(/[A-Za-z]/g) || [];
+  if (letters.length < 12) return false;
+  const upper = letters.filter((letter) => letter >= "A" && letter <= "Z").length;
+  return upper / letters.length >= 0.85;
+}
+
+function luhnValid(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length < 13 || digits.length > 19) return false;
+  if (/^(\d)\1+$/.test(digits)) return false;
+
+  let sum = 0;
+  let doubleDigit = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = Number(digits[i]);
+    if (doubleDigit) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    doubleDigit = !doubleDigit;
+  }
+  return sum % 10 === 0;
+}
+
+function creditCardMatches(text) {
+  const candidates = String(text || "").match(/\b(?:\d[ -]?){13,19}\b/g) || [];
+  return candidates.filter(luhnValid);
+}
+
 // ================================
 // DETECTION
 // ================================
-function detectSecrets(text) {
+// Collect every occurrence of a pattern as concrete substrings so they can be
+// redacted individually instead of wiping the whole field.
+function collectMatches(text, pattern, name, out) {
+  let re;
+  try {
+    const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+    re = new RegExp(pattern.source, flags);
+  } catch (_) {
+    re = pattern;
+  }
+  const found = text.match(re);
+  if (!found) return;
+  const seen = new Set();
+  for (const value of found) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push({ name, value });
+  }
+}
+
+// Returns [{ name, value }]. value is the matched substring to redact, or null
+// for signal-only matches (large paste, client-data keyword) that have no single
+// token to remove. Each guard is independent — there is no master switch.
+function detectSecretMatches(text) {
   if (!text || typeof text !== "string") return [];
-  if (!SHIELDVAULT_SETTINGS.secretGuard) return [];
 
   const matches = [];
   for (const detector of DETECTORS) {
     if (!isDetectorEnabled(detector.name)) continue;
-    if (detector.pattern.test(text)) {
-      matches.push(detector.name);
+    collectMatches(text, detector.pattern, detector.name, matches);
+  }
+
+  if (SHIELDVAULT_SETTINGS.passwordGuard) {
+    collectMatches(text, /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i, "Password-like string", matches);
+  }
+
+  if (SHIELDVAULT_SETTINGS.recoveryPhraseGuard) {
+    collectMatches(text, /\b(?:recovery phrase|seed phrase|mnemonic phrase)\b/i, "Recovery phrase mention", matches);
+  }
+
+  if (SHIELDVAULT_SETTINGS.privateInfoGuard) {
+    collectMatches(text, /\b\d{3}-\d{2}-\d{4}\b/, "Private personal info", matches);
+    if (/\b(?:dob|date of birth)\b/i.test(text) && !matches.some((m) => m.name === "Private personal info")) {
+      matches.push({ name: "Private personal info", value: null });
+    }
+    for (const card of creditCardMatches(text)) {
+      matches.push({ name: "Credit card number", value: card });
     }
   }
 
-  if (SHIELDVAULT_SETTINGS.passwordGuard && /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i.test(text)) {
-    matches.push("Password-like string");
-  }
-
-  if (SHIELDVAULT_SETTINGS.recoveryPhraseGuard && /\b(?:recovery phrase|seed phrase|mnemonic phrase)\b/i.test(text)) {
-    matches.push("Recovery phrase mention");
-  }
-
-  if (SHIELDVAULT_SETTINGS.privateInfoGuard && (/\b\d{3}-\d{2}-\d{4}\b/.test(text) || /\b(?:dob|date of birth)\b/i.test(text))) {
-    matches.push("Private personal info");
-  }
-
   if (SHIELDVAULT_SETTINGS.clientDataGuard && /\b(?:client data|customer data|confidential client|internal only)\b/i.test(text)) {
-    matches.push("Client/customer data");
+    matches.push({ name: "Client/customer data", value: null });
   }
 
   if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
-    matches.push("Large sensitive paste");
+    matches.push({ name: "Large sensitive paste", value: null });
   }
   return matches;
 }
@@ -285,23 +397,17 @@ function isDetectorEnabled(detectorName) {
   return SHIELDVAULT_SETTINGS.secretGuard;
 }
 
-// ================================
-// BEHAVIORAL DETECTION
-// ================================
-const BEHAVIORAL_PATTERNS = [
-  { name: "All Caps", pattern: /\b[A-Z]{4,}\b/ },
-  { name: "Per My Last Email", pattern: /per my last email/i },
-  { name: "Multiple Exclamation Marks", pattern: /!{2,}/ },
-];
-
 function detectBehaviors(text) {
   if (!text || typeof text !== "string") return [];
   if (!SHIELDVAULT_SETTINGS.reputationGuard && !SHIELDVAULT_SETTINGS.emotionalPostWarning) return [];
 
   const matches = [];
-  for (const bp of BEHAVIORAL_PATTERNS) {
-    if (bp.pattern.test(text)) {
-      matches.push(bp.name);
+  for (const detector of BEHAVIORAL_DETECTORS) {
+    const hit = typeof detector.test === "function"
+      ? detector.test(text)
+      : detector.pattern.test(text);
+    if (hit && !matches.includes(detector.name)) {
+      matches.push(detector.name);
     }
   }
   return matches;
@@ -319,64 +425,294 @@ function detectLateNightWarning(text, vector) {
 // ================================
 // CORE ACTIONS
 // ================================
-function hardNullify(el) {
-  setValue(el, "");
-  
-  requestAnimationFrame(() => {
-    setValue(el, "");
-  });
-  
-  setTimeout(() => {
-    const current = getValue(el);
-    if (current && detectSecrets(current).length > 0) {
-      setValue(el, "");
-    }
-  }, 50);
-}
+const SHIELDVAULT_REDACTION = "[secret removed]";
 
-function liftAndFadeGhost(el, text) {
+// Replace only the matched secret substrings in the field, preserving the rest
+// of the user's text. Recomputed from the live value each pass so framework
+// re-renders (React/Lexical) that restore the original get re-redacted.
+function redactField(el) {
   if (!el) return;
+  const current = getValue(el);
+  if (!current) return;
+  const redactable = detectSecretMatches(current).filter((m) => m.value);
+  if (!redactable.length) return;
 
-  const rect = el.getBoundingClientRect();
-  const ghost = document.createElement("div");
-
-  const maskedText = "••• SECRET BLOCKED •••";
-
-  ghost.textContent = maskedText;
-  ghost.style.position = "fixed";
-  ghost.style.left = `${rect.left}px`;
-  ghost.style.top = `${rect.top}px`;
-  ghost.style.maxWidth = `${rect.width}px`;
-  ghost.style.padding = "6px 10px";
-  ghost.style.fontSize = "12px";
-  ghost.style.fontFamily = "system-ui, sans-serif";
-  ghost.style.fontWeight = "600";
-  ghost.style.color = "#fff";
-  ghost.style.background = "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)";
-  ghost.style.border = "1px solid rgba(255,255,255,0.1)";
-  ghost.style.borderRadius = "6px";
-  ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
-  ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = "2147483647";
-  ghost.style.transition = "transform 1s ease-out, opacity 1s ease-out";
-  ghost.style.opacity = "1";
-
-  document.body.appendChild(ghost);
-
-  requestAnimationFrame(() => {
-    ghost.style.transform = "translateY(-30px)";
-    ghost.style.opacity = "0";
-  });
-
-  setTimeout(() => ghost.remove(), 1100);
+  let redacted = current;
+  for (const match of redactable) {
+    redacted = redacted.split(match.value).join(SHIELDVAULT_REDACTION);
+  }
+  if (redacted !== current) setValue(el, redacted);
 }
 
-function notifyBackground(detectorNames, vector) {
+function hardRedact(el) {
+  redactField(el);
+  requestAnimationFrame(() => redactField(el));
+  setTimeout(() => redactField(el), 50);
+}
+
+function fieldIdFor(el) {
+  if (!el) return "none";
+  if (!SHIELDVAULT_FIELD_IDS.has(el)) {
+    SHIELDVAULT_FIELD_ID_SEQ += 1;
+    SHIELDVAULT_FIELD_IDS.set(el, `${el.tagName || "FIELD"}:${SHIELDVAULT_FIELD_ID_SEQ}`);
+  }
+  return SHIELDVAULT_FIELD_IDS.get(el);
+}
+
+function contentHash(text) {
+  const value = String(text || "");
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function cleanupExpiredBypasses() {
+  const now = Date.now();
+  for (let i = SHIELDVAULT_ACTIVE_BYPASSES.length - 1; i >= 0; i -= 1) {
+    if (SHIELDVAULT_ACTIVE_BYPASSES[i].expiresAt <= now) {
+      SHIELDVAULT_ACTIVE_BYPASSES.splice(i, 1);
+    }
+  }
+}
+
+function addScopedBypass(el, text) {
+  cleanupExpiredBypasses();
+  SHIELDVAULT_ACTIVE_BYPASSES.push({
+    domain: location.hostname,
+    fieldId: fieldIdFor(el),
+    hash: contentHash(text),
+    expiresAt: Date.now() + SHIELDVAULT_BYPASS_WINDOW_MS,
+  });
+}
+
+function hasScopedBypass(el, text) {
+  cleanupExpiredBypasses();
+  const domain = location.hostname;
+  const fieldId = fieldIdFor(el);
+  const hash = contentHash(text);
+  return SHIELDVAULT_ACTIVE_BYPASSES.some((bypass) => {
+    return bypass.domain === domain && bypass.fieldId === fieldId && bypass.hash === hash;
+  });
+}
+
+function currentSurfaceName() {
+  const host = location.hostname.replace(/^www\./, "");
+  if (host.includes("chatgpt") || host.includes("chat.openai")) return "ChatGPT";
+  if (host.includes("claude")) return "Claude";
+  if (host.includes("gemini") || host.includes("aistudio.google")) return "Google AI";
+  if (host.includes("github")) return "GitHub";
+  if (host.includes("gitlab")) return "GitLab";
+  if (host.includes("slack")) return "Slack";
+  if (host.includes("discord")) return "Discord";
+  if (host.includes("gmail") || host.includes("mail.google")) return "Gmail";
+  if (host.includes("outlook")) return "Outlook";
+  if (host.includes("linkedin")) return "LinkedIn";
+  if (host.includes("reddit")) return "Reddit";
+  if (host === "x.com" || host.includes("twitter")) return "X";
+  if (host.includes("notion")) return "Notion";
+  if (host.includes("linear")) return "Linear";
+  if (host.includes("atlassian")) return "Atlassian";
+  if (host.includes("replit")) return "Replit";
+  if (host.includes("codesandbox")) return "CodeSandbox";
+  if (host.includes("stackblitz")) return "StackBlitz";
+  return "this site";
+}
+
+function surfaceAccentColor() {
+  const host = location.hostname;
+  if (host.includes("github")) return "#0969da";
+  if (host.includes("gitlab")) return "#fc6d26";
+  if (host.includes("slack")) return "#611f69";
+  if (host.includes("discord")) return "#5865f2";
+  if (host.includes("chatgpt") || host.includes("chat.openai")) return "#10a37f";
+  if (host.includes("gmail") || host.includes("mail.google")) return "#1a73e8";
+  if (host.includes("linkedin")) return "#0a66c2";
+  if (host.includes("notion")) return "#111827";
+  if (host.includes("linear")) return "#5e6ad2";
+  return "#4c6fff";
+}
+
+function blockedOutcome(detectorNames) {
+  const detectors = Array.isArray(detectorNames) ? detectorNames.join(" ").toLowerCase() : "";
+  if (detectors.includes("openai")) return "OpenAI API key protected";
+  if (detectors.includes("anthropic")) return "Anthropic API key protected";
+  if (
+    detectors.includes("hugging face") ||
+    detectors.includes("azure openai") ||
+    detectors.includes("cohere") ||
+    detectors.includes("mistral") ||
+    detectors.includes("groq") ||
+    detectors.includes("perplexity") ||
+    detectors.includes("openrouter")
+  ) {
+    return "AI API key protected";
+  }
+  if (detectors.includes("github") && (detectors.includes("pat") || detectors.includes("token"))) {
+    return "GitHub PAT protected";
+  }
+  if (detectors.includes("aws")) return "AWS credential protected";
+  if (
+    detectors.includes("vercel") ||
+    detectors.includes("netlify") ||
+    detectors.includes("cloudflare") ||
+    detectors.includes("supabase") ||
+    detectors.includes("firebase")
+  ) {
+    return "Cloud credential protected";
+  }
+  if (detectors.includes("slack") || detectors.includes("discord")) return "Chat token protected";
+  if (
+    detectors.includes("notion") ||
+    detectors.includes("linear") ||
+    detectors.includes("airtable") ||
+    detectors.includes("shopify") ||
+    detectors.includes("sentry") ||
+    detectors.includes("posthog")
+  ) {
+    return "SaaS token protected";
+  }
+  if (detectors.includes("credit card") || detectors.includes("card number")) {
+    return "Credit card number protected";
+  }
+  if (detectors.includes("password")) return "Password protected";
+  if (detectors.includes("private personal info")) return "Private info protected";
+  if (detectors.includes("large sensitive paste")) return "Code block protected";
+  return "Secret protected";
+}
+
+function showBlockedOverlay(el, text, detectorNames) {
+  const previous = document.getElementById("shieldvault-blocked-overlay");
+  if (previous) previous.remove();
+
+  let blockedText = String(text || "");
+  const expiresAt = Date.now() + SHIELDVAULT_BYPASS_WINDOW_MS;
+  const accent = surfaceAccentColor();
+  const surface = currentSurfaceName();
+  const overlay = document.createElement("div");
+  overlay.id = "shieldvault-blocked-overlay";
+  overlay.setAttribute("role", "status");
+  overlay.style.cssText = [
+    "position:fixed",
+    "right:18px",
+    "bottom:18px",
+    "width:min(340px,calc(100vw - 36px))",
+    "z-index:2147483647",
+    "padding:14px",
+    "border-radius:10px",
+    "background:#fff",
+    `border:1px solid ${accent}`,
+    "box-shadow:0 14px 34px rgba(15,23,42,0.22)",
+    "color:#111827",
+    "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
+    "font-size:13px",
+    "line-height:1.35",
+  ].join(";");
+
+  const title = document.createElement("div");
+  title.textContent = blockedOutcome(detectorNames);
+  title.style.cssText = `font-weight:700;margin-bottom:5px;font-size:14px;color:${accent}`;
+  overlay.appendChild(title);
+
+  const detail = document.createElement("div");
+  detail.textContent = `ShieldVault redacted risky text from ${surface}. No secret content was stored.`;
+  detail.style.cssText = "color:#374151;margin-bottom:8px";
+  overlay.appendChild(detail);
+
+  const detectorList = document.createElement("div");
+  detectorList.textContent = Array.isArray(detectorNames) && detectorNames.length
+    ? detectorNames.slice(0, 3).join(", ")
+    : "Secret detector";
+  detectorList.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:7px";
+  overlay.appendChild(detectorList);
+
+  const scope = document.createElement("div");
+  scope.textContent = "Undo is limited to this site, this field, and this exact content.";
+  scope.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:12px";
+  overlay.appendChild(scope);
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.textContent = "Dismiss";
+  dismiss.style.cssText = [
+    "padding:7px 10px",
+    "border-radius:7px",
+    "border:1px solid #d1d5db",
+    "background:transparent",
+    "color:#374151",
+    "cursor:pointer",
+  ].join(";");
+
+  const allowOnce = document.createElement("button");
+  allowOnce.type = "button";
+  allowOnce.textContent = "Undo / allow once (45s)";
+  allowOnce.style.cssText = [
+    "padding:7px 10px",
+    "border-radius:7px",
+    `border:1px solid ${accent}`,
+    `background:${accent}`,
+    "color:#fff",
+    "cursor:pointer",
+    "font-weight:600",
+  ].join(";");
+
+  dismiss.addEventListener("click", () => {
+    blockedText = "";
+    overlay.remove();
+  });
+
+  allowOnce.addEventListener("click", () => {
+    if (!el || Date.now() > expiresAt || !blockedText) {
+      allowOnce.disabled = true;
+      allowOnce.textContent = "Expired";
+      return;
+    }
+    addScopedBypass(el, blockedText);
+    setValue(el, blockedText);
+    el.focus();
+    blockedText = "";
+    overlay.remove();
+  });
+
+  const countdown = setInterval(() => {
+    if (!document.body.contains(overlay)) {
+      clearInterval(countdown);
+      return;
+    }
+    const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    if (remaining > 0) {
+      allowOnce.textContent = `Undo / allow once (${remaining}s)`;
+    }
+  }, 1000);
+
+  setTimeout(() => {
+    blockedText = "";
+    clearInterval(countdown);
+    if (!document.body.contains(overlay)) return;
+    allowOnce.disabled = true;
+    allowOnce.textContent = "Expired";
+    allowOnce.style.opacity = "0.65";
+    allowOnce.style.cursor = "not-allowed";
+  }, SHIELDVAULT_BYPASS_WINDOW_MS);
+
+  actions.appendChild(dismiss);
+  actions.appendChild(allowOnce);
+  overlay.appendChild(actions);
+  document.body.appendChild(overlay);
+}
+
+function notifyBackground(detectorNames, vector, category) {
   try {
     chrome.runtime.sendMessage({
       type: "SHIELDVAULT_PREVENTED",
       detectors: detectorNames,
-      vector: vector
+      vector: vector,
+      category: category || "secret"
     });
   } catch (e) {
     // Extension context may be invalidated, ignore silently
@@ -390,6 +726,8 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   // Freeze the input so the text stays visible but the user can't type more
   if (el) el.setAttribute("readonly", "true");
 
+  const accent = surfaceAccentColor();
+  const surface = currentSurfaceName();
   const modal = document.createElement("div");
   modal.id = "shieldvault-behavioral-modal";
   modal.style.cssText = [
@@ -397,13 +735,12 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     "top:50%",
     "left:50%",
     "transform:translate(-50%,-50%)",
-    "background:rgba(255,255,255,0.6)",
-    "backdrop-filter:blur(16px) saturate(180%)",
-    "color:#1a1a2e",
-    "border:1px solid rgba(255,255,255,0.5)",
-    "border-radius:12px",
-    "box-shadow:0 8px 32px rgba(0,0,0,0.1)",
-    "padding:24px 28px",
+    "background:#fff",
+    `border:1px solid ${accent}`,
+    "border-radius:10px",
+    "box-shadow:0 18px 42px rgba(15,23,42,0.24)",
+    "color:#111827",
+    "padding:20px 22px",
     "max-width:420px",
     "width:90vw",
     "z-index:2147483647",
@@ -413,24 +750,29 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   ].join(";");
 
   modal.innerHTML = `
-    <div style="font-size:18px;font-weight:700;margin-bottom:10px">🛡️ ShieldVault — Regret Check</div>
-    <p style="margin:0 0 10px">Your message may come across as regrettable:</p>
-    <ul id="sv-warning-list" style="margin:0 0 16px;padding-left:18px;color:#b45309"></ul>
-    <p style="margin:0 0 18px;color:#4a5568;font-size:13px">Take a breath — are you sure you want to send this?</p>
+    <div id="sv-behavior-title" style="font-size:17px;font-weight:700;margin-bottom:8px">ShieldVault - Regret Check</div>
+    <p style="margin:0 0 10px;color:#374151">A local tone check noticed this before it leaves ${surface}:</p>
+    <ul id="sv-warning-list" style="margin:0 0 14px;padding-left:18px;color:#92400e"></ul>
+    <p style="margin:0 0 16px;color:#6b7280;font-size:13px">Your message content is not stored. Edit now, or allow this exact message once and submit again within 5 seconds.</p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button id="sv-disable-btn" style="padding:8px 12px;border-radius:7px;border:1.5px solid #1a1a2e;background:transparent;color:#1a1a2e;cursor:pointer;font-size:13px">Turn off this warning</button>
-      <button id="sv-edit-btn" style="padding:8px 16px;border-radius:7px;border:1.5px solid #1a1a2e;background:transparent;color:#1a1a2e;cursor:pointer;font-size:14px">✏️ Edit Message</button>
-      <button id="sv-send-btn" style="padding:8px 16px;border-radius:7px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:14px">Send Anyway</button>
+      <button id="sv-disable-btn" style="padding:8px 12px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#374151;cursor:pointer;font-size:13px">Turn off</button>
+      <button id="sv-edit-btn" style="padding:8px 14px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#111827;cursor:pointer;font-size:14px">Edit message</button>
+      <button id="sv-send-btn" style="padding:8px 14px;border-radius:7px;border:none;color:#fff;cursor:pointer;font-size:14px;font-weight:600">Allow once</button>
     </div>
   `;
 
   document.body.appendChild(modal);
 
+  const title = modal.querySelector("#sv-behavior-title");
+  if (title) title.style.color = accent;
+  const sendBtn = modal.querySelector("#sv-send-btn");
+  if (sendBtn) sendBtn.style.background = accent;
+
   const ul = modal.querySelector("#sv-warning-list");
   for (const w of warnings) {
     const li = document.createElement("li");
     li.style.margin = "4px 0";
-    li.textContent = `⚠️ ${w}`;
+    li.textContent = w;
     ul.appendChild(li);
   }
 
@@ -472,22 +814,33 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
 // ================================
 function handleDetection(text, el, vector, event) {
   // --- Hard block: secrets ---
-  const secretMatches = detectSecrets(text);
+  const secretMatches = detectSecretMatches(text);
   if (secretMatches.length > 0) {
-    if (event && typeof event.preventDefault === "function") {
+    if (el && hasScopedBypass(el, text)) return false;
+
+    const redactable = secretMatches.filter((m) => m.value);
+    const hasEvent = event && typeof event.preventDefault === "function";
+
+    // On the passive input fallback (no event to cancel) there is nothing to do
+    // for signal-only matches — don't nag without an actionable block.
+    if (!hasEvent && redactable.length === 0) return false;
+
+    if (hasEvent) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
 
+    const names = [...new Set(secretMatches.map((m) => m.name))];
+
     if (el) {
       // Clear any active bypass before hard-blocking
       delete el.dataset.shieldvaultBypass;
-      hardNullify(el);
-      liftAndFadeGhost(el, text);
+      if (redactable.length) hardRedact(el);
+      showBlockedOverlay(el, text, names);
     }
 
-    notifyBackground(secretMatches, vector);
-    devWarn(`Blocked: ${secretMatches.join(", ")} via ${vector}`);
+    notifyBackground(names, vector, "secret");
+    devWarn(`Blocked: ${names.join(", ")} via ${vector}`);
     return true;
   }
 
@@ -515,6 +868,7 @@ function handleDetection(text, el, vector, event) {
     if (USER_TIER === "plus") {
       showBehavioralModal(text, el, warnings, warningTypes);
     }
+    notifyBackground(warnings, vector, "behavioral");
     devWarn(`Behavioral warning: ${warnings.join(", ")} via ${vector}`);
     return true;
   }
@@ -574,13 +928,14 @@ document.addEventListener(
 document.addEventListener(
   "input",
   (e) => {
-    const el = e.target;
+    const el = resolveEditable(e.target);
     if (!el) return;
 
     if (
       el.tagName !== "INPUT" &&
       el.tagName !== "TEXTAREA" &&
-      !el.isContentEditable
+      !el.isContentEditable &&
+      el.getAttribute("role") !== "textbox"
     ) {
       return;
     }
@@ -588,26 +943,9 @@ document.addEventListener(
     const value = getValue(el);
     if (!value) return;
 
-    // Hard block: secrets
-    const secretMatches = detectSecrets(value);
-    if (secretMatches.length > 0) {
-      // Clear any active bypass before hard-blocking
-      delete el.dataset.shieldvaultBypass;
-      hardNullify(el);
-      liftAndFadeGhost(el, value);
-      notifyBackground(secretMatches, "input-fallback");
-      devWarn(`Fallback blocked: ${secretMatches.join(", ")}`);
-      return;
-    }
-
-    // Soft block: behavioral (skip if bypass is active)
-    if (el.dataset.shieldvaultBypass === "true") return;
-
-    const behaviorMatches = detectBehaviors(value);
-    if (behaviorMatches.length > 0 && USER_TIER === "plus") {
-      showBehavioralModal(value, el, behaviorMatches, ["emotional"]);
-      devWarn(`Fallback behavioral warning: ${behaviorMatches.join(", ")}`);
-    }
+    // No event to cancel here — handleDetection redacts secrets and (on Plus)
+    // surfaces the behavioral modal, sharing one code path with the other hooks.
+    handleDetection(value, el, "input-fallback", null);
   },
   true
 );
