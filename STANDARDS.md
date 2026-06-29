@@ -28,6 +28,32 @@ timestamp. The matched secret content is **never persisted, transmitted, or
 logged**. Any change that would store or send field content is a breaking change
 to this invariant and must be called out explicitly in review.
 
+## Pro entitlement (Stripe)
+
+The extension never talks to Stripe directly. The `shieldvault.site` server owns
+all payment and entitlement logic; the extension only opens checkout and
+validates a license key.
+
+- **Checkout** opens `GET /api/checkout/quick?plan=<monthly|lifetime>` in a tab.
+  The server redirects to Stripe Checkout and, on success, issues the buyer a
+  license key (shown on the success page and emailed).
+- **Activation / re-validation** — `POST /api/license/activate { key }` must
+  respond:
+  ```json
+  { "valid": true, "tier": "plus", "plan": "monthly|lifetime", "expiresAt": <ms epoch|null> }
+  ```
+  - `expiresAt: null` (or omitted) means **never expires** — used for lifetime.
+  - For monthly, `expiresAt` is the current period end; the extension re-checks
+    on each popup open, so the server extends it on renewal and returns
+    `{ "valid": false }` once the subscription lapses.
+- The extension treats `expiresAt` as the source of truth. It must **not**
+  invent a local expiry window. A `null` expiry is lifetime; a positive expiry
+  in the past is lapsed; both the popup and the content-script tier gate honour
+  this.
+
+License keys are the entitlement (portable across reinstalls/machines) — we do
+not use session/deep-link tokens, which don't survive a reinstall.
+
 ## Documentation
 
 We document **contracts and non-obvious algorithms**, not trivia.

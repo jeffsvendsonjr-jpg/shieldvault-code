@@ -27,8 +27,17 @@ let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 // TIER — read from storage; default to basic
 // ================================
 let USER_TIER = "basic";
-chrome.storage.local.get(["shieldvault_tier"], (result) => {
-  USER_TIER = result.shieldvault_tier || "basic";
+
+// Effective tier honours expiry: a 'plus' tier whose Pro window has lapsed
+// (positive expiry in the past) is treated as basic, even if the popup hasn't
+// re-validated yet. A null/absent expiry means lifetime (never expires).
+function effectiveTier(tier, expiry) {
+  const expired = typeof expiry === "number" && expiry > 0 && Date.now() > expiry;
+  return tier === "plus" && !expired ? "plus" : "basic";
+}
+
+chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
+  USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry);
 });
 
 const SHIELDVAULT_BYPASS_WINDOW_MS = 45000;
@@ -70,8 +79,11 @@ function refreshPausedState() {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.shieldvault_tier) {
-    USER_TIER = changes.shieldvault_tier.newValue || "basic";
+  if (changes.shieldvault_tier || changes.shieldvault_pro_expiry) {
+    chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
+      if (chrome.runtime.lastError) return;
+      USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry);
+    });
   }
   if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
     SHIELDVAULT_PAUSED = isHostPaused(changes[SHIELDVAULT_PAUSED_DOMAINS_KEY].newValue);
