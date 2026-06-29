@@ -8,6 +8,106 @@
   // ── Proof list ──────────────────────────────────────────────────────────────
 
   let proofs = [];
+  let pausedDomains = [];
+
+  function isBehaviorProof(proof) {
+    return proof && proof.category === 'behavioral';
+  }
+
+  function proofTimestamp(proof) {
+    return proof && (proof.timestamp || proof.ts || Date.now());
+  }
+
+  function countPausedDomains(value) {
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === 'object') {
+      return Object.keys(value).filter(function (domain) {
+        return value[domain] !== false;
+      }).length;
+    }
+    return 0;
+  }
+
+  function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(value);
+  }
+
+  function renderSummary() {
+    const secretProofs = proofs.filter(function (proof) {
+      return !isBehaviorProof(proof);
+    }).length;
+    const behaviorProofs = proofs.filter(isBehaviorProof).length;
+
+    setText('summary-events', proofs.length);
+    setText('summary-secrets', secretProofs);
+    setText('summary-messages', behaviorProofs);
+    setText('summary-paused', countPausedDomains(pausedDomains));
+  }
+
+  function outcomeForProof(proof) {
+    const detectors = Array.isArray(proof.detectors) ? proof.detectors.join(' ').toLowerCase() : '';
+    if (isBehaviorProof(proof)) return 'Message cooled down';
+    if (detectors.includes('openai')) return 'OpenAI API key protected';
+    if (detectors.includes('anthropic')) return 'Anthropic API key protected';
+    if (
+      detectors.includes('hugging face') ||
+      detectors.includes('azure openai') ||
+      detectors.includes('cohere') ||
+      detectors.includes('mistral') ||
+      detectors.includes('groq') ||
+      detectors.includes('perplexity') ||
+      detectors.includes('openrouter')
+    ) {
+      return 'AI API key protected';
+    }
+    if (detectors.includes('github') && (detectors.includes('pat') || detectors.includes('token'))) {
+      return 'GitHub PAT protected';
+    }
+    if (detectors.includes('aws')) return 'AWS credential protected';
+    if (
+      detectors.includes('vercel') ||
+      detectors.includes('netlify') ||
+      detectors.includes('cloudflare') ||
+      detectors.includes('supabase') ||
+      detectors.includes('firebase')
+    ) {
+      return 'Cloud credential protected';
+    }
+    if (detectors.includes('slack') || detectors.includes('discord')) return 'Chat token protected';
+    if (
+      detectors.includes('notion') ||
+      detectors.includes('linear') ||
+      detectors.includes('airtable') ||
+      detectors.includes('shopify') ||
+      detectors.includes('sentry') ||
+      detectors.includes('posthog')
+    ) {
+      return 'SaaS token protected';
+    }
+    if (detectors.includes('credit card') || detectors.includes('card number')) {
+      return 'Credit card number protected';
+    }
+    if (detectors.includes('password')) return 'Password protected';
+    if (detectors.includes('private personal info')) return 'Private info protected';
+    if (detectors.includes('large sensitive paste')) return 'Code block protected';
+    return 'Secret protected';
+  }
+
+  function appendMeta(parent, text) {
+    if (!text) return;
+    const span = document.createElement('span');
+    span.textContent = text;
+    parent.appendChild(span);
+  }
+
+  function appendTag(parent, text, className) {
+    if (!text) return;
+    const span = document.createElement('span');
+    span.className = 'tag ' + className;
+    span.textContent = text;
+    parent.appendChild(span);
+  }
 
   function renderProofs() {
     const container = document.getElementById('proof-list');
@@ -17,25 +117,51 @@
     if (!proofs.length) {
       empty.style.display = '';
       container.style.display = 'none';
-      count.textContent = '0 preventions';
+      count.textContent = '0 protection events';
+      renderSummary();
       return;
     }
 
     empty.style.display = 'none';
-    container.style.display = '';
-    count.textContent = proofs.length + (proofs.length === 1 ? ' prevention' : ' preventions');
+    container.style.display = 'flex';
+    count.textContent = proofs.length + (proofs.length === 1 ? ' protection event' : ' protection events');
 
     container.innerHTML = '';
     for (const p of proofs) {
       const item = document.createElement('div');
       item.className = 'proof-item';
-      const time = new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      item.innerHTML =
-        '<span class="proof-domain">' + escHtml(p.domain || 'unknown') + '</span>' +
-        '<span class="proof-type">' + escHtml(p.detectors ? p.detectors.join(', ') : p.vector || '') + '</span>' +
-        '<span class="proof-time">' + time + '</span>';
+      const time = new Date(proofTimestamp(p)).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const outcome = document.createElement('span');
+      outcome.className = 'proof-outcome';
+      outcome.textContent = outcomeForProof(p);
+      item.appendChild(outcome);
+
+      const meta = document.createElement('div');
+      meta.className = 'proof-meta';
+      appendMeta(meta, p.domain || 'unknown');
+      appendMeta(meta, p.vector || '');
+      appendMeta(meta, time);
+      item.appendChild(meta);
+
+      const details = document.createElement('div');
+      details.className = 'proof-details';
+      const detectors = Array.isArray(p.detectors) ? p.detectors : [];
+      detectors.forEach(function (detector) {
+        appendTag(details, detector, 'tag-detector');
+      });
+      if (!detectors.length && p.category) appendTag(details, p.category, 'tag-vector');
+      item.appendChild(details);
+
       container.appendChild(item);
     }
+
+    renderSummary();
   }
 
   function escHtml(str) {
@@ -47,8 +173,19 @@
   }
 
   document.getElementById('clear-btn').addEventListener('click', function () {
-    proofs = [];
-    renderProofs();
+    try {
+      chrome.runtime.sendMessage({ type: 'SHIELDVAULT_CLEAR_PROOFS' }, function (response) {
+        // Only clear the popup view if the background actually wiped storage and
+        // reset the badge — otherwise the UI would desync from persisted state.
+        if (chrome.runtime.lastError || !response || response.ok !== true) {
+          return;
+        }
+        proofs = [];
+        renderProofs();
+      });
+    } catch (_) {
+      // Leave history intact on messaging failure.
+    }
   });
 
   // Ask background for stored proofs (best-effort; extension may not have any)
@@ -57,24 +194,116 @@
       if (chrome.runtime.lastError) return;
       if (response && Array.isArray(response.proofs)) {
         proofs = response.proofs;
-        renderProofs();
       }
+      if (response && response.pausedDomains) pausedDomains = response.pausedDomains;
+      renderProofs();
     });
   } catch (_) {}
 
   // Live updates while popup is open
   try {
     chrome.runtime.onMessage.addListener(function (message) {
-      if (!message || message.type !== 'SHIELDVAULT_PREVENTED') return;
-      proofs.unshift({
-        ts: Date.now(),
-        domain: message.domain || '',
-        detectors: message.detectors || [],
-        vector: message.vector || '',
-      });
+      if (!message || message.type !== 'SHIELDVAULT_PROOF_STORED' || !message.proof) return;
+      proofs.unshift(message.proof);
+      proofs = proofs.slice(0, 100);
       renderProofs();
     });
   } catch (_) {}
+
+  try {
+    const version = chrome.runtime.getManifest().version;
+    const versionEl = document.getElementById('manifest-version');
+    if (versionEl) versionEl.textContent = 'v' + version;
+  } catch (_) {}
+
+  const settingsLink = document.getElementById('open-settings-link');
+  if (settingsLink) {
+    settingsLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      } else {
+        chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+      }
+    });
+  }
+
+  // ── Pause on this site ───────────────────────────────────────────────────────
+  (function initPauseControl() {
+    const bar = document.getElementById('pause-bar');
+    const label = document.getElementById('pause-label');
+    const btn = document.getElementById('pause-btn');
+    if (!bar || !label || !btn) return;
+
+    let currentDomain = '';
+
+    function render(paused) {
+      if (paused) {
+        bar.classList.add('paused');
+        label.textContent = 'Paused on ' + (currentDomain || 'this site');
+        btn.textContent = 'Resume protection';
+      } else {
+        bar.classList.remove('paused');
+        label.textContent = currentDomain
+          ? 'Protection active on ' + currentDomain
+          : 'Protection active on this site';
+        btn.textContent = 'Pause on this site';
+      }
+    }
+
+    function disableUnsupported(text) {
+      label.textContent = text;
+      btn.style.display = 'none';
+    }
+
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (chrome.runtime.lastError || !tabs || !tabs[0] || !tabs[0].url) {
+          disableUnsupported('Pause is unavailable here');
+          return;
+        }
+        let host = '';
+        try {
+          const url = new URL(tabs[0].url);
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            disableUnsupported('Pause is unavailable on this page');
+            return;
+          }
+          host = url.hostname.replace(/^www\./, '');
+        } catch (_) {
+          disableUnsupported('Pause is unavailable here');
+          return;
+        }
+        currentDomain = host;
+
+        chrome.runtime.sendMessage(
+          { type: 'SHIELDVAULT_GET_PAUSE_STATE', domain: host },
+          function (response) {
+            if (chrome.runtime.lastError) return;
+            render(Boolean(response && response.paused));
+          }
+        );
+
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          chrome.runtime.sendMessage(
+            { type: 'SHIELDVAULT_TOGGLE_PAUSE', domain: host },
+            function (response) {
+              btn.disabled = false;
+              if (chrome.runtime.lastError || !response || response.ok !== true) return;
+              render(Boolean(response.paused));
+              if (response.pausedDomains) {
+                pausedDomains = response.pausedDomains;
+                renderSummary();
+              }
+            }
+          );
+        });
+      });
+    } catch (_) {
+      disableUnsupported('Pause is unavailable here');
+    }
+  })();
 
   renderProofs();
 
@@ -174,36 +403,29 @@
     return _stripeKeyPromise;
   }
 
-  // ── Upgrade button ───────────────────────────────────────────────────────────
+  // ── Upgrade buttons ──────────────────────────────────────────────────────────
 
-  document.getElementById('btn-monthly').addEventListener('click', async function () {
-    const btn = this;
+  function openCheckout(plan, btn, label) {
     btn.disabled = true;
-    btn.textContent = 'Loading…';
+    btn.textContent = 'Opening…';
     try {
-      // Ensure Stripe key is cached before hitting checkout
-      await getStripePublishableKey();
-
-      const res = await fetch(API_BASE + '/api/checkout/quick?plan=monthly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error('Checkout error (' + res.status + ')');
-      const data = await res.json();
-      if (data.url) {
-        window.open(data.url, '_blank');
-      } else {
-        throw new Error('No checkout URL returned');
-      }
+      window.open(API_BASE + '/api/checkout/quick?plan=' + plan, '_blank');
     } catch (err) {
       btn.textContent = 'Error — try again';
-      btn.disabled = false;
-      setTimeout(function () { btn.textContent = '$5.99/month'; btn.disabled = false; }, 3000);
-      return;
+    } finally {
+      setTimeout(function () {
+        btn.textContent = label;
+        btn.disabled = false;
+      }, 2000);
     }
-    btn.textContent = '$5.99/month';
-    btn.disabled = false;
+  }
+
+  document.getElementById('btn-monthly').addEventListener('click', function () {
+    openCheckout('monthly', this, '$4.99/mo');
+  });
+
+  document.getElementById('btn-lifetime').addEventListener('click', function () {
+    openCheckout('lifetime', this, '$39 once');
   });
 
   // ── License key flow ─────────────────────────────────────────────────────────

@@ -86,6 +86,41 @@ button:disabled {
   font-size: 11px;
 }
 
+.pause-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.pause-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pause-bar.paused {
+  border-color: var(--pro-gold-dim);
+}
+
+.pause-bar.paused .pause-label {
+  color: var(--pro-gold);
+}
+
+.pause-btn {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .empty-state {
   text-align: center;
   padding: 20px 10px;

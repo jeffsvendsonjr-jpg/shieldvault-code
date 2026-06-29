@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShieldVault - How it works</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #131722;
+      --text: #e6e8ee;
+      --muted: #8a8f9c;
+      --accent: #4c6fff;
+      --good: #34d399;
+      --border: #1f2433;
+      --warning: #fbbf24;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 28px 18px; }
+    main { width: min(760px, 100%); margin: 0 auto; }
+    header { margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .subtitle { color: var(--muted); margin: 0; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 15px;
+    }
+    section.full { grid-column: 1 / -1; }
+    h2 { margin: 0 0 7px; font-size: 15px; }
+    p, li { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    p { margin: 0; }
+    ul { margin: 0; padding-left: 18px; }
+    code {
+      display: block;
+      margin-top: 8px;
+      padding: 9px;
+      border-radius: 8px;
+      border: 1px dashed rgba(76, 111, 255, 0.42);
+      background: rgba(76, 111, 255, 0.08);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .trust { color: var(--good); font-weight: 600; }
+    footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    @media (max-width: 680px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>How ShieldVault works</h1>
+      <p class="subtitle">ShieldVault checks text locally before risky content leaves the browser.</p>
+    </header>
+
+    <div class="grid">
+      <section>
+        <h2>Hard blocks</h2>
+        <p>When ShieldVault detects a secret, token, credential, private key, or risky large paste, it prevents the action and clears the field before the content can be submitted.</p>
+      </section>
+
+      <section>
+        <h2>Soft flags</h2>
+        <p>Optional Reputation Guard can pause heated messages, late-night posts, and tense phrasing so you can edit before sending.</p>
+      </section>
+
+      <section>
+        <h2>Local-only model</h2>
+        <p class="trust">Detection without possession.</p>
+        <p>Secret and message checks run with local patterns in your browser. Activity history stores metadata only: time, site, category/vector, and detector names.</p>
+      </section>
+
+      <section>
+        <h2>Fake examples</h2>
+        <p>Use fake values when testing. ShieldVault should treat examples like these as risky without exposing a real credential.</p>
+        <code>sk-test-1234567890abcdef1234567890abcdef
+ghp_000000000000000000000000000000000000</code>
+      </section>
+
+      <section class="full">
+        <h2>Known limits</h2>
+        <ul>
+          <li>Pattern detection can miss secrets in unusual formats.</li>
+          <li>Some sites handle editors in ways that may require fallback blocking.</li>
+          <li>Soft flags are simple local pattern checks, not an AI judgment.</li>
+          <li>Undo / allow once is temporary and scoped to the same site, field, and content hash.</li>
+        </ul>
+      </section>
+    </div>
+
+    <footer>ShieldVault <span id="manifest-version"></span> &mdash; Detection without possession</footer>
+  </main>
+  <script>
+    (function () {
+      try {
+        document.getElementById('manifest-version').textContent = 'v' + chrome.runtime.getManifest().version;
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ShieldVault - AI Chat Secret Protection",
   "short_name": "ShieldVault",
-  "version": "1.7.1",
+  "version": "1.7.4",
   "description": "Detects API keys in AI chats and prevents regrettable behavior (angry posts, passive-aggression) before you hit send. 100% local.",
   "icons": {
     "16": "icons/icon16.png",
@@ -16,11 +16,14 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://*.replit.app/*",
     "https://shieldvault.site/*"
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
   },
   "action": {
     "default_title": "ShieldVault",
@@ -41,6 +44,25 @@
         "https://gemini.google.com/*",
         "https://perplexity.ai/*",
         "https://copilot.microsoft.com/*",
+        "https://aistudio.google.com/*",
+        "https://openrouter.ai/*",
+        "https://poe.com/*",
+        "https://grok.com/*",
+        "https://github.com/*",
+        "https://gist.github.com/*",
+        "https://gitlab.com/*",
+        "https://bitbucket.org/*",
+        "https://app.slack.com/*",
+        "https://discord.com/*",
+        "https://linear.app/*",
+        "https://*.atlassian.net/*",
+        "https://www.notion.so/*",
+        "https://docs.google.com/*",
+        "https://*.replit.app/*",
+        "https://replit.com/*",
+        "https://codesandbox.io/*",
+        "https://*.csb.app/*",
+        "https://stackblitz.com/*",
         "https://*.linkedin.com/*",
         "https://*.reddit.com/*",
         "https://twitter.com/*",

@@ -4,21 +4,52 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ShieldVault — Proofs of Prevention</title>
+  <title>ShieldVault — Protection Activity</title>
   <link rel="stylesheet" href="proofs.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Proofs of Prevention</h1>
-      <p class="subtitle">What ShieldVault blocked this session</p>
+      <h1>Protection Activity</h1>
+      <p class="subtitle">Local metadata for what ShieldVault protected</p>
     </header>
 
-    <div class="notice">
-      <strong>Session-only memory:</strong> This list exists only in browser memory.
-      It will be cleared when you close the browser. No secrets are stored—only metadata
-      (domain, time, detection type).
+    <div class="value-bar" aria-label="ShieldVault protection model">
+      <span>Hard blocks secrets</span>
+      <span>Soft flags tone</span>
+      <span>100% local</span>
     </div>
+
+    <div class="notice">
+      <strong>Local activity history:</strong> ShieldVault stores only protection metadata
+      on this device. Secret contents are never stored.
+    </div>
+
+    <div class="activity-summary" aria-label="Activity summary">
+      <div class="summary-item">
+        <strong id="summary-events">0</strong>
+        <span>protection events</span>
+      </div>
+      <div class="summary-item">
+        <strong id="summary-secrets">0</strong>
+        <span>secrets/code blocks protected</span>
+      </div>
+      <div class="summary-item">
+        <strong id="summary-messages">0</strong>
+        <span>messages cooled down</span>
+      </div>
+      <div class="summary-item">
+        <strong id="summary-paused">0</strong>
+        <span>sites paused by you</span>
+      </div>
+    </div>
+
+    <div class="pause-bar" id="pause-bar">
+      <span class="pause-label" id="pause-label">Protection active on this site</span>
+      <button class="pause-btn" id="pause-btn">Pause on this site</button>
+    </div>
+
+    <h2 class="section-title">Recent Activity</h2>
 
     <div class="controls">
       <span class="count" id="count">—</span>
@@ -41,15 +72,24 @@
         <span class="pro-title">Upgrade to ShieldVault Pro</span>
       </div>
       <ul class="pro-features">
-        <li>Priority support</li>
-        <li>Early access to new detectors</li>
-        <li>Support independent development</li>
+        <li>Behavioral detection — rage, threats, late-night guard</li>
+        <li>Rephrasing suggestions for every flagged message</li>
+        <li>Cooldown system + context-aware severity</li>
+        <li>Sound on block + platform-aware detection</li>
       </ul>
+      <div class="pro-plan-labels">
+        <span>Monthly</span>
+        <span>Lifetime <span class="best-value-tag">Best Value</span></span>
+      </div>
       <div class="pro-buttons">
         <button class="pro-btn pro-btn-monthly" id="btn-monthly">
-          $5.99/month
+          $4.99/mo
+        </button>
+        <button class="pro-btn pro-btn-lifetime" id="btn-lifetime">
+          $39 once
         </button>
       </div>
+      <p class="pro-savings-note">Lifetime saves $20+ vs 1 year monthly</p>
       <button class="pro-purchased-link" id="btn-already-purchased">
         I already have a license key
       </button>
@@ -77,7 +117,9 @@
     </div>
 
     <footer>
-      ShieldVault — Detection without possession
+      <a href="#" id="open-settings-link">Settings</a>
+      <a href="how-it-works.html" target="_blank" rel="noopener">How it works &rarr;</a>
+      <span>ShieldVault <span id="manifest-version"></span> &mdash; Detection without possession</span>
     </footer>
   </div>
   <script src="proofs.js"></script>
