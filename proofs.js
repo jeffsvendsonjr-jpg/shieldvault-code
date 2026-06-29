@@ -229,6 +229,83 @@
     });
   }
 
+  // ── Pause on this site ───────────────────────────────────────────────────────
+  (function initPauseControl() {
+    const bar = document.getElementById('pause-bar');
+    const label = document.getElementById('pause-label');
+    const btn = document.getElementById('pause-btn');
+    if (!bar || !label || !btn) return;
+
+    let currentDomain = '';
+
+    function render(paused) {
+      if (paused) {
+        bar.classList.add('paused');
+        label.textContent = 'Paused on ' + (currentDomain || 'this site');
+        btn.textContent = 'Resume protection';
+      } else {
+        bar.classList.remove('paused');
+        label.textContent = currentDomain
+          ? 'Protection active on ' + currentDomain
+          : 'Protection active on this site';
+        btn.textContent = 'Pause on this site';
+      }
+    }
+
+    function disableUnsupported(text) {
+      label.textContent = text;
+      btn.style.display = 'none';
+    }
+
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (chrome.runtime.lastError || !tabs || !tabs[0] || !tabs[0].url) {
+          disableUnsupported('Pause is unavailable here');
+          return;
+        }
+        let host = '';
+        try {
+          const url = new URL(tabs[0].url);
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            disableUnsupported('Pause is unavailable on this page');
+            return;
+          }
+          host = url.hostname.replace(/^www\./, '');
+        } catch (_) {
+          disableUnsupported('Pause is unavailable here');
+          return;
+        }
+        currentDomain = host;
+
+        chrome.runtime.sendMessage(
+          { type: 'SHIELDVAULT_GET_PAUSE_STATE', domain: host },
+          function (response) {
+            if (chrome.runtime.lastError) return;
+            render(Boolean(response && response.paused));
+          }
+        );
+
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          chrome.runtime.sendMessage(
+            { type: 'SHIELDVAULT_TOGGLE_PAUSE', domain: host },
+            function (response) {
+              btn.disabled = false;
+              if (chrome.runtime.lastError || !response || response.ok !== true) return;
+              render(Boolean(response.paused));
+              if (response.pausedDomains) {
+                pausedDomains = response.pausedDomains;
+                renderSummary();
+              }
+            }
+          );
+        });
+      });
+    } catch (_) {
+      disableUnsupported('Pause is unavailable here');
+    }
+  })();
+
   renderProofs();
 
   // ── Pro status ───────────────────────────────────────────────────────────────

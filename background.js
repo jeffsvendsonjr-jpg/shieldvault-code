@@ -64,9 +64,73 @@ async function getStoredProofs() {
     : [];
 }
 
+function normalizePausedDomains(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).filter((domain) => value[domain] !== false);
+  }
+  return [];
+}
+
 async function getPausedDomains() {
   const result = await chrome.storage.local.get([SHIELDVAULT_PAUSED_DOMAINS_KEY]);
-  return result[SHIELDVAULT_PAUSED_DOMAINS_KEY] || [];
+  return normalizePausedDomains(result[SHIELDVAULT_PAUSED_DOMAINS_KEY]);
+}
+
+async function setPausedDomains(domains) {
+  await chrome.storage.local.set({ [SHIELDVAULT_PAUSED_DOMAINS_KEY]: domains });
+}
+
+// Toggle a domain's paused state. Returns the new state for that domain.
+async function togglePausedDomain(domain) {
+  const clean = safeText(domain, 200).replace(/^www\./, '');
+  if (!clean) {
+    return { domain: '', paused: false, pausedDomains: await getPausedDomains() };
+  }
+  const current = await getPausedDomains();
+  let next;
+  let paused;
+  if (current.includes(clean)) {
+    next = current.filter((d) => d !== clean);
+    paused = false;
+  } else {
+    next = [...current, clean];
+    paused = true;
+  }
+  await setPausedDomains(next);
+  return { domain: clean, paused, pausedDomains: next };
+}
+
+// ── Toolbar badge: running count of protection events ────────────────────────
+const SHIELDVAULT_BADGE_COUNT_KEY = 'shieldvault_badge_count';
+
+function formatBadge(count) {
+  if (!count) return '';
+  return count > 999 ? '999+' : String(count);
+}
+
+async function bumpBadge() {
+  try {
+    const stored = await chrome.storage.local.get([SHIELDVAULT_BADGE_COUNT_KEY]);
+    const count = (Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0) + 1;
+    await chrome.storage.local.set({ [SHIELDVAULT_BADGE_COUNT_KEY]: count });
+    await chrome.action.setBadgeBackgroundColor({ color: '#4c6fff' });
+    await chrome.action.setBadgeText({ text: formatBadge(count) });
+  } catch (_) {
+    // Badge is best-effort.
+  }
+}
+
+async function restoreBadge() {
+  try {
+    const stored = await chrome.storage.local.get([SHIELDVAULT_BADGE_COUNT_KEY]);
+    await chrome.action.setBadgeBackgroundColor({ color: '#4c6fff' });
+    await chrome.action.setBadgeText({
+      text: formatBadge(Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0),
+    });
+  } catch (_) {
+    // Badge is best-effort.
+  }
 }
 
 async function storeProof(message, sender) {
@@ -74,6 +138,7 @@ async function storeProof(message, sender) {
   const existing = await getStoredProofs();
   const proofs = [proof, ...existing].slice(0, SHIELDVAULT_MAX_PROOFS);
   await chrome.storage.local.set({ [SHIELDVAULT_PROOFS_KEY]: proofs });
+  await bumpBadge();
   try {
     chrome.runtime.sendMessage({ type: 'SHIELDVAULT_PROOF_STORED', proof });
   } catch (_) {
@@ -105,6 +170,11 @@ chrome.runtime.onInstalled.addListener((details) => {
     return;
   }
   ensureShieldVaultDefaults();
+  restoreBadge();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  restoreBadge();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -126,8 +196,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'SHIELDVAULT_CLEAR_PROOFS') {
     chrome.storage.local
-      .set({ [SHIELDVAULT_PROOFS_KEY]: [] })
+      .set({ [SHIELDVAULT_PROOFS_KEY]: [], [SHIELDVAULT_BADGE_COUNT_KEY]: 0 })
+      .then(() => chrome.action.setBadgeText({ text: '' }).catch(() => {}))
       .then(() => sendResponse({ ok: true, proofs: [] }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_GET_PAUSE_STATE') {
+    getPausedDomains()
+      .then((pausedDomains) => {
+        const clean = safeText(message.domain, 200).replace(/^www\./, '');
+        sendResponse({ paused: clean ? pausedDomains.includes(clean) : false, pausedDomains });
+      })
+      .catch(() => sendResponse({ paused: false, pausedDomains: [] }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_TOGGLE_PAUSE') {
+    togglePausedDomain(message.domain)
+      .then((result) => sendResponse({ ok: true, ...result }))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }

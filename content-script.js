@@ -36,9 +36,45 @@ const SHIELDVAULT_ACTIVE_BYPASSES = [];
 const SHIELDVAULT_FIELD_IDS = new WeakMap();
 let SHIELDVAULT_FIELD_ID_SEQ = 0;
 
+// ================================
+// PAUSED DOMAINS — skip all detection on sites the user paused
+// ================================
+const SHIELDVAULT_PAUSED_DOMAINS_KEY = "shieldvault_paused_domains";
+let SHIELDVAULT_PAUSED = false;
+
+function normalizePausedList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === "object") {
+    return Object.keys(value).filter((domain) => value[domain] !== false);
+  }
+  return [];
+}
+
+function isHostPaused(list) {
+  const host = location.hostname.replace(/^www\./, "");
+  return normalizePausedList(list).some(
+    (domain) => host === domain || host.endsWith("." + domain)
+  );
+}
+
+function refreshPausedState() {
+  try {
+    chrome.storage.local.get([SHIELDVAULT_PAUSED_DOMAINS_KEY], (result) => {
+      if (chrome.runtime.lastError) return;
+      SHIELDVAULT_PAUSED = isHostPaused(result[SHIELDVAULT_PAUSED_DOMAINS_KEY]);
+    });
+  } catch (_) {
+    // Storage unavailable; leave detection on.
+  }
+}
+
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.shieldvault_tier) {
+  if (area !== "local") return;
+  if (changes.shieldvault_tier) {
     USER_TIER = changes.shieldvault_tier.newValue || "basic";
+  }
+  if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
+    SHIELDVAULT_PAUSED = isHostPaused(changes[SHIELDVAULT_PAUSED_DOMAINS_KEY].newValue);
   }
 });
 
@@ -203,6 +239,14 @@ const DETECTORS = [
   
   // Basic Auth
   { name: "Basic Auth Header", pattern: /Basic\s+[A-Za-z0-9+\/=]{20,}/ },
+
+  // Azure storage connection string — AccountKey holds a long base64 secret.
+  { name: "Azure Storage Connection String", pattern: /AccountKey=[A-Za-z0-9+\/=]{40,}/i },
+
+  // Generic labeled secret — context-bound so it needs an explicit
+  // secret/api-key/token label next to a high-entropy value. Catches the long
+  // tail of unbranded keys without flagging ordinary words.
+  { name: "Generic API key / secret", pattern: /(?:secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?token)["'\s]{0,4}[:=]["'\s]{0,4}[A-Za-z0-9_\-]{16,}/i },
 ];
 
 // ================================
@@ -377,6 +421,13 @@ function detectSecretMatches(text) {
     for (const card of creditCardMatches(text)) {
       matches.push({ name: "Credit card number", value: card });
     }
+    // Email addresses.
+    collectMatches(text, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/, "Email address", matches);
+    // Phone numbers — require separators or a country prefix so bare digit runs
+    // (IDs, order numbers) don't trip it.
+    collectMatches(text, /(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/, "Phone number", matches);
+    // IBAN — two-letter country code, two check digits, then the account body.
+    collectMatches(text, /\b[A-Z]{2}\d{2}[A-Za-z0-9]{11,30}\b/, "IBAN / bank account", matches);
   }
 
   if (SHIELDVAULT_SETTINGS.clientDataGuard && /\b(?:client data|customer data|confidential client|internal only)\b/i.test(text)) {
@@ -813,6 +864,9 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
 // BLOCKING LOGIC
 // ================================
 function handleDetection(text, el, vector, event) {
+  // Respect per-site pause — ShieldVault stays fully silent on paused domains.
+  if (SHIELDVAULT_PAUSED) return false;
+
   // --- Hard block: secrets ---
   const secretMatches = detectSecretMatches(text);
   if (secretMatches.length > 0) {
@@ -860,14 +914,22 @@ function handleDetection(text, el, vector, event) {
   }
 
   if (warnings.length > 0) {
+    // The behavioral modal — the only way to review or allow the message — is a
+    // Plus feature. For non-Plus users we must NOT cancel the submit, or their
+    // Enter key would be swallowed with no modal and no way through (soft-lock).
+    // Log it for their activity history and let the message go.
+    if (USER_TIER !== "plus") {
+      notifyBackground(warnings, vector, "behavioral");
+      devWarn(`Behavioral warning (log only, non-Plus): ${warnings.join(", ")} via ${vector}`);
+      return false;
+    }
+
     if (event && typeof event.preventDefault === "function") {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
 
-    if (USER_TIER === "plus") {
-      showBehavioralModal(text, el, warnings, warningTypes);
-    }
+    showBehavioralModal(text, el, warnings, warningTypes);
     notifyBackground(warnings, vector, "behavioral");
     devWarn(`Behavioral warning: ${warnings.join(", ")} via ${vector}`);
     return true;
@@ -903,6 +965,19 @@ document.addEventListener(
 
     const el = getActiveEditable();
     handleDetection(pasted, el, "paste", e);
+  },
+  true
+);
+
+// DROP — dragged-in text bypasses paste, so intercept it here too
+document.addEventListener(
+  "drop",
+  (e) => {
+    const dropped = e.dataTransfer ? e.dataTransfer.getData("text") : "";
+    if (!dropped) return;
+
+    const el = resolveEditable(e.target) || getActiveEditable();
+    handleDetection(dropped, el, "drop", e);
   },
   true
 );
@@ -955,3 +1030,4 @@ document.addEventListener(
 // ================================
 devLog("Content script loaded —", DETECTORS.length, "detectors active,", BEHAVIORAL_DETECTORS.length, "behavioral detectors active");
 loadShieldVaultSettings();
+refreshPausedState();
