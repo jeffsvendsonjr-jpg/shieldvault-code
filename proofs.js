@@ -299,28 +299,32 @@
 
   // ── Pro status ───────────────────────────────────────────────────────────────
 
+  // A null/absent expiry means "never expires" (lifetime). Only a positive
+  // expiry in the past counts as lapsed.
   function getProStatus() {
     return new Promise((resolve) => {
       chrome.storage.local.get(["shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
         const isPro = result.shieldvault_pro === true;
-        const expiry = result.shieldvault_pro_expiry || 0;
-        const now = Date.now();
-
-        if (!isPro || now > expiry) {
-          resolve(false);
-          return;
-        }
-
-        resolve(true);
+        const expiry = result.shieldvault_pro_expiry;
+        const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
+        resolve(isPro && !expired);
       });
     });
   }
 
+  // Persist Pro from a server activation/validation response. The server is the
+  // source of truth for the plan and when (if ever) it expires:
+  //   - lifetime  → data.expiresAt is null/omitted  → stored as null (no expiry)
+  //   - monthly   → data.expiresAt is the period end → stored and re-checked
+  // We deliberately do NOT invent a local 30-day window here; that previously
+  // expired lifetime purchases and never tracked real renewal.
   function saveProStatus(data) {
-    const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
+    const expiry =
+      typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
     chrome.storage.local.set({
       shieldvault_pro: true,
-      shieldvault_pro_expiry: expiryTime,
+      shieldvault_pro_expiry: expiry,
+      shieldvault_pro_plan: data.plan || '',
       shieldvault_license_key: data.key || '',
       shieldvault_tier: data.tier || 'plus',
     });
@@ -330,6 +334,7 @@
     chrome.storage.local.remove([
       "shieldvault_pro",
       "shieldvault_pro_expiry",
+      "shieldvault_pro_plan",
       "shieldvault_license_key",
       "shieldvault_tier",
     ]);
@@ -352,7 +357,36 @@
     }
   }
 
+  // Re-check a stored license with the server so monthly renewals extend and
+  // cancelled subs are revoked. Network failures are non-destructive — we keep
+  // the existing local state (which still honours its own expiry) and try again
+  // next time the popup opens.
+  function revalidateLicense() {
+    chrome.storage.local.get(['shieldvault_license_key'], async (result) => {
+      const key = result.shieldvault_license_key;
+      if (!key) return;
+      try {
+        const res = await fetch(API_BASE + '/api/license/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        if (!res.ok) return; // transient — leave state untouched
+        const data = await res.json();
+        if (data && data.valid) {
+          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt });
+        } else {
+          clearProStatus(); // server says this key is no longer entitled
+        }
+        applyProState();
+      } catch (_) {
+        // Offline or server down: keep current state, retry next open.
+      }
+    });
+  }
+
   applyProState();
+  revalidateLicense();
 
   // ── Upgrade buttons ──────────────────────────────────────────────────────────
 
@@ -422,7 +456,12 @@
       }
       const data = await res.json();
       if (!data.valid) throw new Error('Invalid license key');
-      saveProStatus({ key, tier: data.tier || 'plus' });
+      saveProStatus({
+        key,
+        tier: data.tier || 'plus',
+        plan: data.plan,
+        expiresAt: data.expiresAt,
+      });
       applyProState();
     } catch (err) {
       errorEl.textContent = err.message || 'Activation failed. Please try again.';
