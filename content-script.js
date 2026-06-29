@@ -417,7 +417,7 @@ function ibanValid(value) {
 }
 
 function ibanMatches(text) {
-  const candidates = String(text || "").match(/\b[A-Z]{2}\d{2}[A-Za-z0-9]{11,30}\b/g) || [];
+  const candidates = String(text || "").match(/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/gi) || [];
   return candidates.filter(ibanValid);
 }
 
