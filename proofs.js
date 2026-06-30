@@ -12,6 +12,10 @@
     return proof && proof.category === 'behavioral';
   }
 
+  function isReviewProof(proof) {
+    return proof && proof.category === 'review';
+  }
+
   function proofTimestamp(proof) {
     return proof && (proof.timestamp || proof.ts || Date.now());
   }
@@ -33,7 +37,7 @@
 
   function renderSummary() {
     const secretProofs = proofs.filter(function (proof) {
-      return !isBehaviorProof(proof);
+      return !isBehaviorProof(proof) && !isReviewProof(proof);
     }).length;
     const behaviorProofs = proofs.filter(isBehaviorProof).length;
 
@@ -46,6 +50,12 @@
   function outcomeForProof(proof) {
     const detectors = Array.isArray(proof.detectors) ? proof.detectors.join(' ').toLowerCase() : '';
     if (isBehaviorProof(proof)) return 'Message cooled down';
+    if (isReviewProof(proof)) {
+      if (detectors.includes('email')) return 'Email noticed — allowed';
+      if (detectors.includes('phone')) return 'Phone number noticed — allowed';
+      if (detectors.includes('large paste')) return 'Large paste reviewed — allowed';
+      return 'Reviewed — allowed';
+    }
     if (detectors.includes('openai')) return 'OpenAI API key protected';
     if (detectors.includes('anthropic')) return 'Anthropic API key protected';
     if (

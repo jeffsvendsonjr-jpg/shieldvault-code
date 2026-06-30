@@ -182,7 +182,10 @@ async function storeProof(message, sender) {
       ? stored[SHIELDVAULT_PROOFS_KEY]
       : [];
     const proofs = [proof, ...existing].slice(0, SHIELDVAULT_MAX_PROOFS);
-    const count = (Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0) + 1;
+    // 'review' events (ordinary email/phone, large harmless paste) are recorded
+    // for transparency but are NOT blocks — they must not inflate the badge.
+    const prevCount = Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0;
+    const count = proof.category === 'review' ? prevCount : prevCount + 1;
 
     // Proof list and badge count commit together in one serialized write.
     await chrome.storage.local.set({

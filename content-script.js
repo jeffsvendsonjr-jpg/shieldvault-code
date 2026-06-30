@@ -157,7 +157,9 @@ const DETECTORS = [
   // AI providers and model platforms
   { name: "Anthropic API Key", pattern: /sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{40,}/ },
   { name: "Hugging Face Token", pattern: /hf_[A-Za-z0-9]{30,}/ },
-  { name: "Azure OpenAI Key", pattern: /(?:azure[_\s-]*openai|api[-_\s]?key)[^\n\r]{0,80}['"]?[A-Za-z0-9]{32}['"]?/i },
+  // Azure-specific label only — the generic "api key" branch was removed so it
+  // no longer mislabels unrelated keys; the generic API-key detector handles those.
+  { name: "Azure OpenAI Key", pattern: /(?:azure[_\s-]*openai[_\s-]*api[_\s-]*key|AZURE_OPENAI_API_KEY)\s*[:=]\s*['"]?[A-Za-z0-9]{32}['"]?/i },
   { name: "Cohere API Key", pattern: /(?:cohere[_\s-]*api[_\s-]*key|CO_API_KEY)[^\n\r]{0,40}['"]?[A-Za-z0-9_-]{30,}['"]?/i },
   { name: "Mistral API Key", pattern: /(?:mistral[_\s-]*api[_\s-]*key|MISTRAL_API_KEY)[^\n\r]{0,40}['"]?[A-Za-z0-9_-]{30,}['"]?/i },
   { name: "Groq API Key", pattern: /gsk_[A-Za-z0-9]{40,}/ },
@@ -457,58 +459,78 @@ function collectMatches(text, pattern, name, out) {
 }
 
 /**
- * Run every enabled secret/PII guard over `text` and return the matches.
+ * Run every enabled secret/PII guard over `text` and classify the matches.
  *
  * @param {string} text  Field contents to scan.
- * @returns {Array<{name: string, value: string|null}>} One entry per match.
- *   `value` is the exact substring to redact; `null` marks a signal-only match
- *   (large paste, client-data keyword) that has no single token to remove.
- *   Each guard is gated by its own setting — there is no master switch.
+ * @returns {Array<{name: string, value: string|null, soft: boolean}>} One entry
+ *   per match. `value` is the exact substring to redact (null for signal-only
+ *   matches). `soft: false` = clearly sensitive → hard block; `soft: true` =
+ *   ordinary signal (plain email/phone, large harmless paste) → review only,
+ *   never blocked on its own. Each guard is gated by its own setting.
  */
 function detectSecretMatches(text) {
   if (!text || typeof text !== "string") return [];
 
-  const matches = [];
+  // --- HARD signals: secrets and clearly sensitive personal data ---
+  const hard = [];
   for (const detector of DETECTORS) {
     if (!isDetectorEnabled(detector.name)) continue;
-    collectMatches(text, detector.pattern, detector.name, matches);
+    collectMatches(text, detector.pattern, detector.name, hard);
   }
 
   if (SHIELDVAULT_SETTINGS.passwordGuard) {
-    collectMatches(text, /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i, "Password-like string", matches);
+    collectMatches(text, /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i, "Password-like string", hard);
   }
 
   if (SHIELDVAULT_SETTINGS.recoveryPhraseGuard) {
-    collectMatches(text, /\b(?:recovery phrase|seed phrase|mnemonic phrase)\b/i, "Recovery phrase mention", matches);
+    collectMatches(text, /\b(?:recovery phrase|seed phrase|mnemonic phrase)\b/i, "Recovery phrase mention", hard);
   }
 
   if (SHIELDVAULT_SETTINGS.privateInfoGuard) {
-    collectMatches(text, /\b\d{3}-\d{2}-\d{4}\b/, "Private personal info", matches);
-    if (/\b(?:dob|date of birth)\b/i.test(text) && !matches.some((m) => m.name === "Private personal info")) {
-      matches.push({ name: "Private personal info", value: null });
+    collectMatches(text, /\b\d{3}-\d{2}-\d{4}\b/, "Private personal info", hard);
+    if (/\b(?:dob|date of birth)\b/i.test(text) && !hard.some((m) => m.name === "Private personal info")) {
+      hard.push({ name: "Private personal info", value: null });
     }
     for (const card of creditCardMatches(text)) {
-      matches.push({ name: "Credit card number", value: card });
+      hard.push({ name: "Credit card number", value: card });
     }
-    // Email addresses.
-    collectMatches(text, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/, "Email address", matches);
-    // Phone numbers — require separators or a country prefix so bare digit runs
-    // (IDs, order numbers) don't trip it.
-    collectMatches(text, /(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/, "Phone number", matches);
     // IBAN — checksum-validated so look-alike identifiers aren't redacted.
     for (const iban of ibanMatches(text)) {
-      matches.push({ name: "IBAN / bank account", value: iban });
+      hard.push({ name: "IBAN / bank account", value: iban });
     }
   }
 
   if (SHIELDVAULT_SETTINGS.clientDataGuard && /\b(?:client data|customer data|confidential client|internal only)\b/i.test(text)) {
-    matches.push({ name: "Client/customer data", value: null });
+    hard.push({ name: "Client/customer data", value: null });
   }
 
-  if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
-    matches.push({ name: "Large sensitive paste", value: null });
+  // --- SOFT signals: ordinary contact info that should not block by itself ---
+  const soft = [];
+  if (SHIELDVAULT_SETTINGS.privateInfoGuard) {
+    // Plain email / phone are everyday content (Gmail, Slack, support forms).
+    // Detect them for transparency, but never hard-block or store the value.
+    if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text)) {
+      soft.push({ name: "Email address", value: null });
+    }
+    if (/(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/.test(text)) {
+      soft.push({ name: "Phone number", value: null });
+    }
   }
-  return matches;
+
+  // Large paste alone is just a big paste (code, logs, prose). It only becomes a
+  // hard "sensitive" block when it travels with a real secret signal.
+  if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
+    if (hard.length > 0) {
+      hard.push({ name: "Large sensitive paste", value: null });
+    } else {
+      soft.push({ name: "Large paste review", value: null });
+    }
+  }
+
+  return [
+    ...hard.map((m) => ({ name: m.name, value: m.value, soft: false })),
+    ...soft.map((m) => ({ name: m.name, value: null, soft: true })),
+  ];
 }
 
 function isDetectorEnabled(detectorName) {
@@ -948,12 +970,15 @@ function handleDetection(text, el, vector, event) {
   // Respect per-site pause — ShieldVault stays fully silent on paused domains.
   if (SHIELDVAULT_PAUSED) return false;
 
-  // --- Hard block: secrets ---
-  const secretMatches = detectSecretMatches(text);
-  if (secretMatches.length > 0) {
+  const allMatches = detectSecretMatches(text);
+  const hardMatches = allMatches.filter((m) => !m.soft);
+  const softMatches = allMatches.filter((m) => m.soft);
+
+  // --- Hard block: secrets and clearly sensitive data ---
+  if (hardMatches.length > 0) {
     if (el && hasScopedBypass(el, text)) return false;
 
-    const redactable = secretMatches.filter((m) => m.value);
+    const redactable = hardMatches.filter((m) => m.value);
     const hasEvent = event && typeof event.preventDefault === "function";
 
     // On the passive input fallback (no event to cancel) there is nothing to do
@@ -965,7 +990,7 @@ function handleDetection(text, el, vector, event) {
       event.stopImmediatePropagation();
     }
 
-    const names = [...new Set(secretMatches.map((m) => m.name))];
+    const names = [...new Set(hardMatches.map((m) => m.name))];
 
     if (el) {
       // Clear any active bypass before hard-blocking
@@ -981,6 +1006,20 @@ function handleDetection(text, el, vector, event) {
     notifyBackground(names, vector, "secret");
     devWarn(`Blocked: ${names.join(", ")} via ${vector}`);
     return true;
+  }
+
+  // --- Soft review: ordinary email/phone or a large harmless paste ---
+  // Never blocked — the user proceeds normally. We only log a metadata-only
+  // review event (detector names only, never the email/phone text), and only on
+  // an actionable surface so the input-fallback can't spam it per keystroke.
+  if (softMatches.length > 0) {
+    const hasEvent = event && typeof event.preventDefault === "function";
+    if (hasEvent) {
+      const names = [...new Set(softMatches.map((m) => m.name))];
+      notifyBackground(names, vector, "review");
+      devWarn(`Soft review (allowed): ${names.join(", ")} via ${vector}`);
+    }
+    // fall through — do not block; still allow the behavioral check below
   }
 
   // --- Soft block: behavioral ---
