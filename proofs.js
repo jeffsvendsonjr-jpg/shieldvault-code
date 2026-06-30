@@ -299,6 +299,11 @@
 
   // ── Pro status ───────────────────────────────────────────────────────────────
 
+  // The buyer's email, learned from a prior license activation. Kept in memory
+  // so checkout can attach it synchronously (preserving the click gesture) and
+  // link a monthly→lifetime upgrade to the same Stripe customer.
+  let proEmail = '';
+
   // A null/absent expiry means "never expires" (lifetime). Only a positive
   // expiry in the past counts as lapsed.
   function getProStatus() {
@@ -321,22 +326,26 @@
   function saveProStatus(data) {
     const expiry =
       typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
+    if (data.email) proEmail = data.email;
     chrome.storage.local.set({
       shieldvault_pro: true,
       shieldvault_pro_expiry: expiry,
       shieldvault_pro_plan: data.plan || '',
       shieldvault_license_key: data.key || '',
       shieldvault_tier: data.tier || 'plus',
+      shieldvault_email: data.email || proEmail || '',
     });
   }
 
   function clearProStatus() {
+    proEmail = '';
     chrome.storage.local.remove([
       "shieldvault_pro",
       "shieldvault_pro_expiry",
       "shieldvault_pro_plan",
       "shieldvault_license_key",
       "shieldvault_tier",
+      "shieldvault_email",
     ]);
   }
 
@@ -374,7 +383,7 @@
         if (!res.ok) return; // transient — leave state untouched
         const data = await res.json();
         if (data && data.valid) {
-          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt });
+          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt, email: data.email });
         } else {
           clearProStatus(); // server says this key is no longer entitled
         }
@@ -393,15 +402,40 @@
   function openCheckout(plan, btn, label) {
     btn.disabled = true;
     btn.textContent = 'Opening…';
-    try {
-      window.open(API_BASE + '/api/checkout/quick?plan=' + plan, '_blank');
-    } catch (err) {
-      btn.textContent = 'Error — try again';
-    } finally {
+
+    // Open the tab synchronously to preserve the click gesture (popup blockers
+    // reject an async window.open), then fill its URL once we've read the
+    // freshest email from storage. Reading at click time — not from a warmed-up
+    // variable — avoids the race where the first click fires before any seed has
+    // populated, which would drop &email= and reopen the unlinked-customer path.
+    const tab = window.open('', '_blank');
+
+    function go(email) {
+      const emailParam = email ? '&email=' + encodeURIComponent(email) : '';
+      const url = API_BASE + '/api/checkout/quick?plan=' + plan + emailParam;
+      try {
+        if (tab && !tab.closed) {
+          tab.location = url;
+        } else {
+          window.open(url, '_blank');
+        }
+      } catch (_) {
+        window.open(url, '_blank');
+      }
       setTimeout(function () {
         btn.textContent = label;
         btn.disabled = false;
       }, 2000);
+    }
+
+    try {
+      chrome.storage.local.get(['shieldvault_email'], function (result) {
+        const email =
+          (!chrome.runtime.lastError && result.shieldvault_email) || proEmail || '';
+        go(email);
+      });
+    } catch (_) {
+      go(proEmail);
     }
   }
 
@@ -461,6 +495,7 @@
         tier: data.tier || 'plus',
         plan: data.plan,
         expiresAt: data.expiresAt,
+        email: data.email,
       });
       applyProState();
     } catch (err) {
