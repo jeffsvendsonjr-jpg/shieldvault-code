@@ -394,14 +394,6 @@
     });
   }
 
-  // Seed the in-memory email from storage so checkout can attach it even before
-  // revalidation runs this session.
-  chrome.storage.local.get(['shieldvault_email'], function (result) {
-    if (!chrome.runtime.lastError && result.shieldvault_email) {
-      proEmail = result.shieldvault_email;
-    }
-  });
-
   applyProState();
   revalidateLicense();
 
@@ -410,19 +402,40 @@
   function openCheckout(plan, btn, label) {
     btn.disabled = true;
     btn.textContent = 'Opening…';
-    try {
-      // Attach the known email so the server can link a monthly→lifetime upgrade
-      // to the same Stripe customer. Read synchronously from memory to keep this
-      // inside the user-gesture (an async storage read would get the popup blocked).
-      const emailParam = proEmail ? '&email=' + encodeURIComponent(proEmail) : '';
-      window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
-    } catch (err) {
-      btn.textContent = 'Error — try again';
-    } finally {
+
+    // Open the tab synchronously to preserve the click gesture (popup blockers
+    // reject an async window.open), then fill its URL once we've read the
+    // freshest email from storage. Reading at click time — not from a warmed-up
+    // variable — avoids the race where the first click fires before any seed has
+    // populated, which would drop &email= and reopen the unlinked-customer path.
+    const tab = window.open('', '_blank');
+
+    function go(email) {
+      const emailParam = email ? '&email=' + encodeURIComponent(email) : '';
+      const url = API_BASE + '/api/checkout/quick?plan=' + plan + emailParam;
+      try {
+        if (tab && !tab.closed) {
+          tab.location = url;
+        } else {
+          window.open(url, '_blank');
+        }
+      } catch (_) {
+        window.open(url, '_blank');
+      }
       setTimeout(function () {
         btn.textContent = label;
         btn.disabled = false;
       }, 2000);
+    }
+
+    try {
+      chrome.storage.local.get(['shieldvault_email'], function (result) {
+        const email =
+          (!chrome.runtime.lastError && result.shieldvault_email) || proEmail || '';
+        go(email);
+      });
+    } catch (_) {
+      go(proEmail);
     }
   }
 

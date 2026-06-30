@@ -45,8 +45,13 @@ validates a license key.
 - **Activation / re-validation** — `POST /api/license/activate { key }` must
   respond:
   ```json
-  { "valid": true, "tier": "plus", "plan": "monthly|lifetime", "expiresAt": <ms epoch|null> }
+  { "valid": true, "tier": "plus", "plan": "monthly|lifetime", "expiresAt": <ms epoch|null>, "email": "buyer@example.com" }
   ```
+  - `email` is the buyer's address and should be returned whenever `valid:true`
+    (on both activation and revalidation). The extension stores it and replays
+    it as `&email=` on a later checkout so a monthly→lifetime upgrade links to
+    the same Stripe customer. It's optional — checkout still works without it —
+    but omitting it breaks upgrade-linking after a reinstall or fresh popup open.
   - `expiresAt: null` (or omitted) means **never expires** — used for lifetime.
   - For monthly, `expiresAt` is the current period end; the extension re-checks
     on each popup open, so the server extends it on renewal and returns
