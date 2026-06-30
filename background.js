@@ -16,6 +16,10 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
 const SHIELDVAULT_PROOFS_KEY = 'shieldvault_proofs';
 const SHIELDVAULT_PAUSED_DOMAINS_KEY = 'shieldvault_paused_domains';
 const SHIELDVAULT_MAX_PROOFS = 100;
+// Soft 'review' events (everyday email/phone, large benign pastes) are
+// high-volume, so they get a small dedicated slice and can never evict the
+// hard-block proofs that make up the real audit trail.
+const SHIELDVAULT_MAX_REVIEW_PROOFS = 25;
 
 function safeText(value, maxLength) {
   return String(value || '').slice(0, maxLength);
@@ -181,7 +185,23 @@ async function storeProof(message, sender) {
     const existing = Array.isArray(stored[SHIELDVAULT_PROOFS_KEY])
       ? stored[SHIELDVAULT_PROOFS_KEY]
       : [];
-    const proofs = [proof, ...existing].slice(0, SHIELDVAULT_MAX_PROOFS);
+    // Fill the cap with hard-block proofs first so they're never pushed out by
+    // high-volume soft 'review' events; reviews use only the leftover slots,
+    // bounded by their own smaller cap.
+    const combined = [proof, ...existing];
+    const blocks = combined
+      .filter((p) => p && p.category !== 'review')
+      .slice(0, SHIELDVAULT_MAX_PROOFS);
+    const reviewSlots = Math.max(
+      0,
+      Math.min(SHIELDVAULT_MAX_PROOFS - blocks.length, SHIELDVAULT_MAX_REVIEW_PROOFS)
+    );
+    const reviews = combined
+      .filter((p) => p && p.category === 'review')
+      .slice(0, reviewSlots);
+    const proofs = [...blocks, ...reviews].sort(
+      (a, b) => (b.timestamp || 0) - (a.timestamp || 0)
+    );
     // 'review' events (ordinary email/phone, large harmless paste) are recorded
     // for transparency but are NOT blocks — they must not inflate the badge.
     const prevCount = Number(stored[SHIELDVAULT_BADGE_COUNT_KEY]) || 0;

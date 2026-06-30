@@ -28,6 +28,10 @@ are intentional and reviewable, not left to a tool's defaults or to chance.
   metadata, never blocked and never redacted, so the user proceeds normally. A
   large paste only escalates to a hard block when it travels with a real secret
   signal. `detectSecretMatches` tags each match `soft: true|false`.
+- **Azure OpenAI requires an Azure-specific label.** The Azure detector only
+  matches an explicit `AZURE_OPENAI_API_KEY` / `azure…openai…api…key` label — not
+  a bare `api key` shape — so an unlabeled `API_KEY=…` is caught by the generic
+  API-key detector instead of being mislabeled as Azure.
 
 ## Permissions
 
