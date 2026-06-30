@@ -37,6 +37,11 @@ validates a license key.
 - **Checkout** opens `GET /api/checkout/quick?plan=<monthly|lifetime>` in a tab.
   The server redirects to Stripe Checkout and, on success, issues the buyer a
   license key (shown on the success page and emailed).
+  - When the buyer's email is known (learned from a prior activation and stored
+    locally), the extension appends `&email=<addr>` so the server links the
+    purchase to the existing Stripe customer. This is what makes a
+    monthly→lifetime upgrade cancel the old subscription and upgrade the same
+    license in place instead of creating an unlinked second customer.
 - **Activation / re-validation** — `POST /api/license/activate { key }` must
   respond:
   ```json

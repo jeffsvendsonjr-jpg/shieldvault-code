@@ -299,6 +299,11 @@
 
   // ── Pro status ───────────────────────────────────────────────────────────────
 
+  // The buyer's email, learned from a prior license activation. Kept in memory
+  // so checkout can attach it synchronously (preserving the click gesture) and
+  // link a monthly→lifetime upgrade to the same Stripe customer.
+  let proEmail = '';
+
   // A null/absent expiry means "never expires" (lifetime). Only a positive
   // expiry in the past counts as lapsed.
   function getProStatus() {
@@ -321,22 +326,26 @@
   function saveProStatus(data) {
     const expiry =
       typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
+    if (data.email) proEmail = data.email;
     chrome.storage.local.set({
       shieldvault_pro: true,
       shieldvault_pro_expiry: expiry,
       shieldvault_pro_plan: data.plan || '',
       shieldvault_license_key: data.key || '',
       shieldvault_tier: data.tier || 'plus',
+      shieldvault_email: data.email || proEmail || '',
     });
   }
 
   function clearProStatus() {
+    proEmail = '';
     chrome.storage.local.remove([
       "shieldvault_pro",
       "shieldvault_pro_expiry",
       "shieldvault_pro_plan",
       "shieldvault_license_key",
       "shieldvault_tier",
+      "shieldvault_email",
     ]);
   }
 
@@ -374,7 +383,7 @@
         if (!res.ok) return; // transient — leave state untouched
         const data = await res.json();
         if (data && data.valid) {
-          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt });
+          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt, email: data.email });
         } else {
           clearProStatus(); // server says this key is no longer entitled
         }
@@ -385,6 +394,14 @@
     });
   }
 
+  // Seed the in-memory email from storage so checkout can attach it even before
+  // revalidation runs this session.
+  chrome.storage.local.get(['shieldvault_email'], function (result) {
+    if (!chrome.runtime.lastError && result.shieldvault_email) {
+      proEmail = result.shieldvault_email;
+    }
+  });
+
   applyProState();
   revalidateLicense();
 
@@ -394,7 +411,11 @@
     btn.disabled = true;
     btn.textContent = 'Opening…';
     try {
-      window.open(API_BASE + '/api/checkout/quick?plan=' + plan, '_blank');
+      // Attach the known email so the server can link a monthly→lifetime upgrade
+      // to the same Stripe customer. Read synchronously from memory to keep this
+      // inside the user-gesture (an async storage read would get the popup blocked).
+      const emailParam = proEmail ? '&email=' + encodeURIComponent(proEmail) : '';
+      window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
     } catch (err) {
       btn.textContent = 'Error — try again';
     } finally {
@@ -461,6 +482,7 @@
         tier: data.tier || 'plus',
         plan: data.plan,
         expiresAt: data.expiresAt,
+        email: data.email,
       });
       applyProState();
     } catch (err) {
