@@ -404,6 +404,15 @@
     });
   }
 
+  // Seed the buyer's email into memory on popup load (a fast local read that
+  // completes long before any button click), so checkout can attach it in a
+  // single synchronous window.open. Revalidation refreshes it afterward.
+  chrome.storage.local.get(['shieldvault_email'], function (result) {
+    if (!chrome.runtime.lastError && result.shieldvault_email) {
+      proEmail = result.shieldvault_email;
+    }
+  });
+
   applyProState();
   revalidateLicense();
 
@@ -412,40 +421,22 @@
   function openCheckout(plan, btn, label) {
     btn.disabled = true;
     btn.textContent = 'Opening…';
-
-    // Open the tab synchronously to preserve the click gesture (popup blockers
-    // reject an async window.open), then fill its URL once we've read the
-    // freshest email from storage. Reading at click time — not from a warmed-up
-    // variable — avoids the race where the first click fires before any seed has
-    // populated, which would drop &email= and reopen the unlinked-customer path.
-    const tab = window.open('', '_blank');
-
-    function go(email) {
-      const emailParam = email ? '&email=' + encodeURIComponent(email) : '';
-      const url = API_BASE + '/api/checkout/quick?plan=' + plan + emailParam;
-      try {
-        if (tab && !tab.closed) {
-          tab.location = url;
-        } else {
-          window.open(url, '_blank');
-        }
-      } catch (_) {
-        window.open(url, '_blank');
-      }
+    try {
+      // Single SYNCHRONOUS open. Opening the tab closes the popup (focus shifts),
+      // which would cancel any pending async callback — so we must not do async
+      // work (e.g. a storage read) after opening, or the buyer lands on a blank
+      // tab. proEmail is seeded on popup load and refreshed by revalidation, so
+      // it's ready here; if it's empty the server falls back to the email Stripe
+      // collects at checkout, so the link still works.
+      const emailParam = proEmail ? '&email=' + encodeURIComponent(proEmail) : '';
+      window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
+    } catch (err) {
+      btn.textContent = 'Error — try again';
+    } finally {
       setTimeout(function () {
         btn.textContent = label;
         btn.disabled = false;
       }, 2000);
-    }
-
-    try {
-      chrome.storage.local.get(['shieldvault_email'], function (result) {
-        const email =
-          (!chrome.runtime.lastError && result.shieldvault_email) || proEmail || '';
-        go(email);
-      });
-    } catch (_) {
-      go(proEmail);
     }
   }
 

@@ -151,7 +151,8 @@ async function disableSubjectiveWarning(type) {
  */
 const DETECTORS = [
   // OpenAI
-  { name: "OpenAI API Key", pattern: /sk-[A-Za-z0-9]{20,}/ },
+  // Left boundary so it can't match inside ordinary words like "task-<token>".
+  { name: "OpenAI API Key", pattern: /(?<![A-Za-z0-9])sk-[A-Za-z0-9]{20,}/ },
   { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{20,}/ },
 
   // AI providers and model platforms
