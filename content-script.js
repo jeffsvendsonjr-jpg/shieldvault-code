@@ -21,6 +21,10 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   lateNightPostAlert: false,
   emotionalPostWarning: false,
   soundOnBlock: false,
+  // Soft-review categories — each independently toggleable from the review card
+  // or Settings, without affecting hard-block personal-info detection (SSN/cards).
+  emailReviewGuard: true,
+  phoneReviewGuard: true,
 };
 let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 
@@ -45,6 +49,10 @@ const SHIELDVAULT_BYPASS_WINDOW_MS = 45000;
 const SHIELDVAULT_ACTIVE_BYPASSES = [];
 const SHIELDVAULT_FIELD_IDS = new WeakMap();
 let SHIELDVAULT_FIELD_ID_SEQ = 0;
+
+// Show a soft-review card at most once per category per page load, so ordinary
+// email/phone content doesn't nag on every message.
+const SHIELDVAULT_REVIEW_SHOWN = new Set();
 
 // ================================
 // PAUSED DOMAINS — skip all detection on sites the user paused
@@ -539,16 +547,16 @@ function detectSecretMatches(text) {
   }
 
   // --- SOFT signals: ordinary contact info that should not block by itself ---
+  // Each has its OWN toggle so turning off email review does not weaken the
+  // hard-block personal-info detectors (SSN, credit card) under privateInfoGuard.
   const soft = [];
-  if (SHIELDVAULT_SETTINGS.privateInfoGuard) {
-    // Plain email / phone are everyday content (Gmail, Slack, support forms).
-    // Detect them for transparency, but never hard-block or store the value.
-    if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text)) {
-      soft.push({ name: "Email address", value: null });
-    }
-    if (/(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/.test(text)) {
-      soft.push({ name: "Phone number", value: null });
-    }
+  if (SHIELDVAULT_SETTINGS.emailReviewGuard &&
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text)) {
+    soft.push({ name: "Email address", value: null });
+  }
+  if (SHIELDVAULT_SETTINGS.phoneReviewGuard &&
+      /(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/.test(text)) {
+    soft.push({ name: "Phone number", value: null });
   }
 
   // Large paste alone is just a big paste (code, logs, prose). It only becomes a
@@ -761,33 +769,30 @@ function blockedOutcome(detectorNames) {
   return "Secret protected";
 }
 
-// Map a detector name to the settings guard that controls it, plus a friendly
-// label — so a catch can offer "stop catching this type" in one click.
-function guardForDetector(name) {
+// Map a SOFT-review detector to its own guard + a quick-toggle label. Quick
+// one-click disable is offered ONLY for these low-risk review categories — never
+// for hard-block secret categories (those point to Settings instead).
+function softGuardForDetector(name) {
   const n = String(name || "").toLowerCase();
-  if (n.includes("password")) return { key: "passwordGuard", label: "password detection" };
-  if (n.includes("recovery") || n.includes("seed") || n.includes("mnemonic")) return { key: "recoveryPhraseGuard", label: "recovery-phrase detection" };
-  if (n.includes("client") || n.includes("customer")) return { key: "clientDataGuard", label: "client/customer-data detection" };
-  if (n.includes("large paste") || n.includes("large sensitive")) return { key: "largePasteGuard", label: "large-paste detection" };
-  if (n.includes("email") || n.includes("phone") || n.includes("credit card") || n.includes("card number") || n.includes("iban") || n.includes("private personal")) {
-    return { key: "privateInfoGuard", label: "personal-info detection" };
-  }
-  if (n.includes("token") || n.includes("pat")) return { key: "tokenGuard", label: "token detection" };
-  return { key: "secretGuard", label: "secret & API-key detection" };
+  if (n.includes("email")) return { key: "emailReviewGuard", label: "Don't warn me for email addresses" };
+  if (n.includes("phone")) return { key: "phoneReviewGuard", label: "Don't warn me for phone numbers" };
+  if (n.includes("large paste")) return { key: "largePasteGuard", label: "Don't warn me for large harmless paste" };
+  return null;
 }
 
-// Distinct guards for a set of detector names (usually one).
-function guardsForDetectors(names) {
+// Distinct soft-review guard toggles for a set of detector names.
+function softGuardsForDetectors(names) {
   const seen = new Map();
   for (const name of names || []) {
-    const guard = guardForDetector(name);
-    if (!seen.has(guard.key)) seen.set(guard.key, guard);
+    const guard = softGuardForDetector(name);
+    if (guard && !seen.has(guard.key)) seen.set(guard.key, guard);
   }
   return [...seen.values()];
 }
 
-// Turn a guard off from a catch card. Persists to storage and updates the live
-// in-memory settings so it takes effect immediately, no reload needed.
+// Turn a guard off (by category key, never by matched text). Persists to storage
+// and updates live in-memory settings so it applies immediately. Reversible from
+// Settings, which toggles the same key.
 async function disableGuard(key) {
   const updated = { ...SHIELDVAULT_SETTINGS, [key]: false };
   SHIELDVAULT_SETTINGS = updated;
@@ -795,6 +800,16 @@ async function disableGuard(key) {
     await chrome.storage.local.set({ [SHIELDVAULT_SETTINGS_KEY]: updated });
   } catch (_) {
     // Storage failure — the in-memory update still applies for this session.
+  }
+}
+
+// Ask the background worker to open the options page (content scripts can't call
+// chrome.runtime.openOptionsPage directly).
+function openShieldVaultSettings() {
+  try {
+    chrome.runtime.sendMessage({ type: "SHIELDVAULT_OPEN_SETTINGS" });
+  } catch (_) {
+    // Extension context may be invalidated; ignore.
   }
 }
 
@@ -854,46 +869,14 @@ function showBlockedOverlay(el, text, detectorNames, options) {
   scope.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:12px";
   overlay.appendChild(scope);
 
-  // Quick "stop catching this" — right-click the card (or click "More options")
-  // to reveal one-click toggles that turn off this catch type on all sites, so a
-  // false positive is a 2-second fix instead of an uninstall.
-  const manageGuards = guardsForDetectors(detectorNames);
-  let manageRow = null;
-  if (manageGuards.length) {
-    manageRow = document.createElement("div");
-    manageRow.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px";
-    for (const guard of manageGuards) {
-      const off = document.createElement("button");
-      off.type = "button";
-      off.textContent = "Stop catching " + guard.label;
-      off.style.cssText = [
-        "padding:5px 8px", "border-radius:6px", "border:1px dashed #d1d5db",
-        "background:transparent", "color:#6b7280", "cursor:pointer", "font-size:12px",
-      ].join(";");
-      off.addEventListener("click", async () => {
-        await disableGuard(guard.key);
-        blockedText = "";
-        overlay.remove();
-      });
-      manageRow.appendChild(off);
-    }
-    overlay.appendChild(manageRow);
-
-    const moreOptions = document.createElement("button");
-    moreOptions.type = "button";
-    moreOptions.textContent = "More options";
-    moreOptions.style.cssText = "background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;padding:0;margin-bottom:10px;text-decoration:underline";
-    moreOptions.addEventListener("click", () => {
-      manageRow.style.display = manageRow.style.display === "none" ? "flex" : "none";
-    });
-    overlay.appendChild(moreOptions);
-
-    // Right-click anywhere on the card reveals the quick toggles.
-    overlay.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      manageRow.style.display = "flex";
-    });
-  }
+  // Hard-block cards NEVER offer a one-click disable for a secret category —
+  // turning off secret protection should be a deliberate act in Settings.
+  const manageLink = document.createElement("button");
+  manageLink.type = "button";
+  manageLink.textContent = "Manage in Settings";
+  manageLink.style.cssText = "background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;padding:0;margin-bottom:10px;text-decoration:underline";
+  manageLink.addEventListener("click", () => openShieldVaultSettings());
+  overlay.appendChild(manageLink);
 
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
@@ -970,6 +953,79 @@ function showBlockedOverlay(el, text, detectorNames, options) {
   actions.appendChild(allowOnce);
   overlay.appendChild(actions);
   document.body.appendChild(overlay);
+}
+
+// Calm, non-blocking review card for SOFT categories (email / phone / large
+// harmless paste). The message is NOT blocked — this only offers a one-click
+// "don't warn me for this" toggle per category. Shown at most once per category
+// per page load. No matched text is ever shown or stored — categories only.
+function showReviewCard(detectorNames) {
+  const toggles = softGuardsForDetectors(detectorNames).filter(
+    (g) => !SHIELDVAULT_REVIEW_SHOWN.has(g.key)
+  );
+  if (!toggles.length) return;
+  toggles.forEach((g) => SHIELDVAULT_REVIEW_SHOWN.add(g.key));
+
+  const existing = document.getElementById("shieldvault-review-card");
+  if (existing) existing.remove();
+
+  const accent = surfaceAccentColor();
+  const noticed = detectorNames
+    .filter((n) => softGuardForDetector(n))
+    .join(", ") || "content";
+
+  const card = document.createElement("div");
+  card.id = "shieldvault-review-card";
+  card.setAttribute("role", "status");
+  card.style.cssText = [
+    "position:fixed", "right:18px", "bottom:18px",
+    "width:min(320px,calc(100vw - 36px))", "z-index:2147483647",
+    "padding:12px 14px", "border-radius:10px", "background:#fff",
+    "border:1px solid #d1d5db", "box-shadow:0 12px 30px rgba(15,23,42,0.18)",
+    "color:#111827", "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
+    "font-size:13px", "line-height:1.35",
+  ].join(";");
+
+  const title = document.createElement("div");
+  title.textContent = noticed + " noticed — not blocked";
+  title.style.cssText = `font-weight:600;margin-bottom:4px;color:${accent}`;
+  card.appendChild(title);
+
+  const detail = document.createElement("div");
+  detail.textContent = "Your message was allowed. Nothing was stored.";
+  detail.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:10px";
+  card.appendChild(detail);
+
+  for (const guard of toggles) {
+    const off = document.createElement("button");
+    off.type = "button";
+    off.textContent = guard.label;
+    off.style.cssText = [
+      "display:block", "width:100%", "text-align:left", "margin-bottom:6px",
+      "padding:6px 8px", "border-radius:6px", "border:1px dashed #d1d5db",
+      "background:transparent", "color:#374151", "cursor:pointer", "font-size:12px",
+    ].join(";");
+    off.addEventListener("click", async () => {
+      await disableGuard(guard.key);
+      off.textContent = "Turned off — reversible in Settings";
+      off.disabled = true;
+      off.style.color = "#6b7280";
+      off.style.cursor = "default";
+    });
+    card.appendChild(off);
+  }
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.textContent = "Dismiss";
+  dismiss.style.cssText = "background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;padding:0;text-decoration:underline";
+  dismiss.addEventListener("click", () => card.remove());
+  card.appendChild(dismiss);
+
+  document.body.appendChild(card);
+  setTimeout(() => {
+    if (document.body.contains(card)) card.remove();
+  }, 9000);
 }
 
 // Short, local block chime (Plus, opt-in). Synthesized with Web Audio so there's
@@ -1206,6 +1262,7 @@ function handleDetection(text, el, vector, event) {
     if (hasEvent) {
       const names = [...new Set(softMatches.map((m) => m.name))];
       notifyBackground(names, vector, "review");
+      showReviewCard(names);
       devWarn(`Soft review (allowed): ${names.join(", ")} via ${vector}`);
     }
     // fall through — do not block; still allow the behavioral check below

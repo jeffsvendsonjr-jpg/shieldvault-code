@@ -13,6 +13,8 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   lateNightPostAlert: false,
   emotionalPostWarning: false,
   soundOnBlock: false,
+  emailReviewGuard: true,
+  phoneReviewGuard: true,
 };
 const SHIELDVAULT_PROOFS_KEY = 'shieldvault_proofs';
 const SHIELDVAULT_PAUSED_DOMAINS_KEY = 'shieldvault_paused_domains';
@@ -327,6 +329,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch(() => sendResponse({ ok: false }));
     return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_OPEN_SETTINGS') {
+    // Content scripts can't open the options page directly.
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+    }
+    return false;
   }
 
   return false;
