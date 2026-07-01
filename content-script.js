@@ -831,6 +831,30 @@ function openShieldVaultSettings() {
   }
 }
 
+// Frosted "liquid glass" surface for the catch cards — opaque-leaning (~92%) so
+// text stays legible on any page background. Falls back to a solid card for users
+// who prefer reduced transparency / higher contrast (accessibility + low-end perf).
+function svGlassStyles(solidBorder) {
+  const reduce =
+    typeof window.matchMedia === "function" &&
+    (window.matchMedia("(prefers-reduced-transparency: reduce)").matches ||
+      window.matchMedia("(prefers-contrast: more)").matches);
+  if (reduce) {
+    return [
+      "background:#fff",
+      "border:1px solid " + solidBorder,
+      "box-shadow:0 16px 40px rgba(15,23,42,0.24)",
+    ];
+  }
+  return [
+    "background:linear-gradient(135deg, rgba(255,255,255,0.93), rgba(244,247,255,0.86))",
+    "backdrop-filter:blur(20px) saturate(180%)",
+    "-webkit-backdrop-filter:blur(20px) saturate(180%)",
+    "border:1px solid rgba(255,255,255,0.7)",
+    "box-shadow:0 22px 55px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.95)",
+  ];
+}
+
 function showBlockedOverlay(el, text, detectorNames, options) {
   const previous = document.getElementById("shieldvault-blocked-overlay");
   if (previous) previous.remove();
@@ -854,9 +878,7 @@ function showBlockedOverlay(el, text, detectorNames, options) {
     "z-index:2147483647",
     "padding:14px",
     "border-radius:10px",
-    "background:#fff",
-    `border:1px solid ${accent}`,
-    "box-shadow:0 14px 34px rgba(15,23,42,0.22)",
+    ...svGlassStyles(accent),
     "color:#111827",
     "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
     "font-size:13px",
@@ -998,8 +1020,8 @@ function showReviewCard(detectorNames) {
   card.style.cssText = [
     "position:fixed", "right:18px", "bottom:18px",
     "width:min(320px,calc(100vw - 36px))", "z-index:2147483647",
-    "padding:12px 14px", "border-radius:10px", "background:#fff",
-    "border:1px solid #d1d5db", "box-shadow:0 12px 30px rgba(15,23,42,0.18)",
+    "padding:12px 14px", "border-radius:10px",
+    ...svGlassStyles("#d1d5db"),
     "color:#111827", "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
     "font-size:13px", "line-height:1.35",
   ].join(";");
@@ -1103,10 +1125,8 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     "top:50%",
     "left:50%",
     "transform:translate(-50%,-50%)",
-    "background:#fff",
-    `border:1px solid ${accent}`,
     "border-radius:10px",
-    "box-shadow:0 18px 42px rgba(15,23,42,0.24)",
+    ...svGlassStyles(accent),
     "color:#111827",
     "padding:20px 22px",
     "max-width:420px",
