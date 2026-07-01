@@ -12,6 +12,7 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   reputationGuard: false,
   lateNightPostAlert: false,
   emotionalPostWarning: false,
+  soundOnBlock: false,
 };
 const SHIELDVAULT_PROOFS_KEY = 'shieldvault_proofs';
 const SHIELDVAULT_PAUSED_DOMAINS_KEY = 'shieldvault_paused_domains';

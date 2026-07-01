@@ -12,6 +12,7 @@
     reputationGuard: false,
     lateNightPostAlert: false,
     emotionalPostWarning: false,
+    soundOnBlock: false,
   };
 
   const sections = Array.from(document.querySelectorAll('section[data-step]'));
