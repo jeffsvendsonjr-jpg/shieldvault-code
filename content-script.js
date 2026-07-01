@@ -20,6 +20,7 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   reputationGuard: false,
   lateNightPostAlert: false,
   emotionalPostWarning: false,
+  soundOnBlock: false,
 };
 let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 
@@ -282,16 +283,44 @@ const DETECTORS = [
 // ================================
 // BEHAVIORAL PATTERN LIBRARY
 // ================================
+// Each detector carries a severity (drives the context-aware cooldown) and a
+// local, deterministic rephrasing suggestion. Suggestions are canned strings —
+// no message content is analyzed remotely or sent anywhere.
 const BEHAVIORAL_DETECTORS = [
-  { name: "Shouting (all-caps)", test: isMostlyCaps },
-  { name: "Aggressive Punctuation", pattern: /[!]{4,}|\?[!]{2,}/ },
-  { name: "Passive Aggressive", pattern: /per my last email|for future reference|with all due respect/i },
-  { name: "Hostile Opener", pattern: /^(you people|what the hell|are you serious|this is ridiculous|i can't believe you)/i },
-  { name: "Dismissive / Condescending", pattern: /clearly you don't understand|obviously you haven't|do i really need to explain/i },
-  { name: "Rage-quit threat", pattern: /i('m| am) done with (this|you)[^a-z]|i quit[^a-z]|screw this/i },
-  { name: "Insult / name-calling", pattern: /\b(idiot|moron|incompetent|pathetic|useless)\b/i },
-  { name: "Threatening escalation", pattern: /\b(i'?ll report you|i will report you|you'?ll regret|this will be escalated)\b/i },
+  { name: "Shouting (all-caps)", test: isMostlyCaps, severity: "low",
+    suggestion: "Switch to normal capitalization — all-caps reads as shouting." },
+  { name: "Aggressive Punctuation", pattern: /[!]{4,}|\?[!]{2,}/, severity: "low",
+    suggestion: "Trim the extra !!! or ?! — a single mark carries the same point more calmly." },
+  { name: "Passive Aggressive", pattern: /per my last email|for future reference|with all due respect/i, severity: "medium",
+    suggestion: "Say it directly: state what you need and by when, without the dig." },
+  { name: "Hostile Opener", pattern: /^(you people|what the hell|are you serious|this is ridiculous|i can't believe you)/i, severity: "medium",
+    suggestion: "Open with the specific problem, not blame — e.g. \"I hit an issue with X.\"" },
+  { name: "Dismissive / Condescending", pattern: /clearly you don't understand|obviously you haven't|do i really need to explain/i, severity: "medium",
+    suggestion: "Drop \"clearly/obviously\" and just explain the point plainly." },
+  { name: "Rage-quit threat", pattern: /i('m| am) done with (this|you)[^a-z]|i quit[^a-z]|screw this/i, severity: "high",
+    suggestion: "Take a beat before threatening to walk — you can't unsend it. Sleep on it if you can." },
+  { name: "Insult / name-calling", pattern: /\b(idiot|moron|incompetent|pathetic|useless)\b/i, severity: "high",
+    suggestion: "Remove the personal attack and describe the behavior or result instead." },
+  { name: "Threatening escalation", pattern: /\b(i'?ll report you|i will report you|you'?ll regret|this will be escalated)\b/i, severity: "high",
+    suggestion: "State your concern and next step factually, without the threat — it lands better and is safer." },
 ];
+
+// Severity + suggestion lookup, including the synthetic late-night warning.
+const SHIELDVAULT_SEVERITY_RANK = { low: 1, medium: 2, high: 3 };
+
+function behavioralMeta(name) {
+  if (name === "Late-night posting check") {
+    return {
+      severity: "medium",
+      suggestion: "It's late — consider saving this as a draft and re-reading it in the morning.",
+    };
+  }
+  const detector = BEHAVIORAL_DETECTORS.find((d) => d.name === name);
+  return {
+    severity: (detector && detector.severity) || "low",
+    suggestion: (detector && detector.suggestion) || "",
+  };
+}
 
 // ================================
 // HELPERS
@@ -861,6 +890,34 @@ function showBlockedOverlay(el, text, detectorNames, options) {
   document.body.appendChild(overlay);
 }
 
+// Short, local block chime (Plus, opt-in). Synthesized with Web Audio so there's
+// no audio asset and nothing is fetched. Best-effort — silently no-ops if the
+// audio context can't start (e.g. no prior user gesture).
+function playBlockSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.setValueAtTime(440, ctx.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.24);
+    osc.onended = () => {
+      try { ctx.close(); } catch (_) {}
+    };
+  } catch (_) {
+    // Autoplay blocked or Web Audio unavailable — stay silent.
+  }
+}
+
 function notifyBackground(detectorNames, vector, category) {
   try {
     chrome.runtime.sendMessage({
@@ -924,11 +981,55 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   if (sendBtn) sendBtn.style.background = accent;
 
   const ul = modal.querySelector("#sv-warning-list");
+  let maxSeverity = "low";
   for (const w of warnings) {
+    const meta = behavioralMeta(w);
+    if (SHIELDVAULT_SEVERITY_RANK[meta.severity] > SHIELDVAULT_SEVERITY_RANK[maxSeverity]) {
+      maxSeverity = meta.severity;
+    }
     const li = document.createElement("li");
-    li.style.margin = "4px 0";
-    li.textContent = w;
+    li.style.margin = "6px 0";
+    const label = document.createElement("div");
+    label.textContent = w;
+    label.style.cssText = "font-weight:600;color:#92400e";
+    li.appendChild(label);
+    if (meta.suggestion) {
+      // Local rephrasing suggestion — deterministic, on-device.
+      const tip = document.createElement("div");
+      tip.textContent = "Try: " + meta.suggestion;
+      tip.style.cssText = "color:#4b5563;font-size:12px;margin-top:2px";
+      li.appendChild(tip);
+    }
     ul.appendChild(li);
+  }
+
+  // Context-aware cooldown: the calmer you're being asked to be, the longer the
+  // "allow once" button stays disabled so there's a real beat before sending.
+  const cooldownMs = { low: 2000, medium: 4000, high: 8000 }[maxSeverity] || 2000;
+  const cooldownLabel = { low: "low", medium: "medium", high: "high" }[maxSeverity];
+  const title2 = modal.querySelector("#sv-behavior-title");
+  if (title2) title2.textContent = "ShieldVault - Regret Check (" + cooldownLabel + ")";
+
+  if (sendBtn) {
+    const allowLabel = sendBtn.textContent;
+    sendBtn.disabled = true;
+    sendBtn.style.opacity = "0.55";
+    sendBtn.style.cursor = "not-allowed";
+    const cooldownEnd = Date.now() + cooldownMs;
+    const tick = setInterval(() => {
+      const remaining = Math.ceil((cooldownEnd - Date.now()) / 1000);
+      if (remaining > 0 && document.body.contains(modal)) {
+        sendBtn.textContent = "Wait " + remaining + "s";
+      } else {
+        clearInterval(tick);
+        if (document.body.contains(modal)) {
+          sendBtn.textContent = allowLabel;
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = "1";
+          sendBtn.style.cursor = "pointer";
+        }
+      }
+    }, 250);
   }
 
   document.getElementById("sv-edit-btn").addEventListener("click", () => {
@@ -1002,6 +1103,11 @@ function handleDetection(text, el, vector, event) {
       showBlockedOverlay(el, text, names, {
         restoreOnAllow: vector !== "drop" && vector !== "paste",
       });
+    }
+
+    // Sound on block — Plus, opt-in, off by default.
+    if (USER_TIER === "plus" && SHIELDVAULT_SETTINGS.soundOnBlock) {
+      playBlockSound();
     }
 
     notifyBackground(names, vector, "secret");

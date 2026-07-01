@@ -13,6 +13,7 @@
     reputationGuard: false,
     lateNightPostAlert: false,
     emotionalPostWarning: false,
+    soundOnBlock: false,
   };
 
   const ids = Object.keys(DEFAULTS);
