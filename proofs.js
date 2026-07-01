@@ -421,23 +421,36 @@
   function openCheckout(plan, btn, label) {
     btn.disabled = true;
     btn.textContent = 'Opening…';
+
+    // Single SYNCHRONOUS open. Opening the tab closes the popup (focus shifts),
+    // which would cancel any pending async callback — so we must not do async
+    // work (e.g. a storage read) after opening, or the buyer lands on a blank
+    // tab. proEmail is seeded on popup load and refreshed by revalidation, so
+    // it's ready here; if it's empty the server falls back to the email Stripe
+    // collects at checkout, so the link still works.
+    let win = null;
     try {
-      // Single SYNCHRONOUS open. Opening the tab closes the popup (focus shifts),
-      // which would cancel any pending async callback — so we must not do async
-      // work (e.g. a storage read) after opening, or the buyer lands on a blank
-      // tab. proEmail is seeded on popup load and refreshed by revalidation, so
-      // it's ready here; if it's empty the server falls back to the email Stripe
-      // collects at checkout, so the link still works.
       const emailParam = proEmail ? '&email=' + encodeURIComponent(proEmail) : '';
-      window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
-    } catch (err) {
-      btn.textContent = 'Error — try again';
-    } finally {
+      win = window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
+    } catch (_) {
+      win = null;
+    }
+
+    // window.open returns null (without throwing) when the pop-up is blocked —
+    // give clear feedback and re-enable so the user can allow pop-ups and retry.
+    if (!win) {
+      btn.textContent = 'Allow pop-ups & retry';
+      btn.disabled = false;
       setTimeout(function () {
         btn.textContent = label;
-        btn.disabled = false;
-      }, 2000);
+      }, 4000);
+      return;
     }
+
+    setTimeout(function () {
+      btn.textContent = label;
+      btn.disabled = false;
+    }, 2000);
   }
 
   document.getElementById('btn-monthly').addEventListener('click', function () {
