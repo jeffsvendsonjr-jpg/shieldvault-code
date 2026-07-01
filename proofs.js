@@ -125,14 +125,14 @@
     if (!proofs.length) {
       empty.style.display = '';
       container.style.display = 'none';
-      count.textContent = '0 protection events';
+      count.textContent = '0 activity events';
       renderSummary();
       return;
     }
 
     empty.style.display = 'none';
     container.style.display = 'flex';
-    count.textContent = proofs.length + (proofs.length === 1 ? ' protection event' : ' protection events');
+    count.textContent = proofs.length + (proofs.length === 1 ? ' activity event' : ' activity events');
 
     container.innerHTML = '';
     for (const p of proofs) {

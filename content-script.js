@@ -559,6 +559,24 @@ function detectSecretMatches(text) {
     soft.push({ name: "Phone number", value: null });
   }
 
+  // When a provider-specific detector already caught the same item, drop the
+  // redundant "Generic API key / secret" label. Overlap = the generic match's
+  // value and a specific match's value contain each other (e.g. Azure's
+  // "AZURE_OPENAI_API_KEY=..." contains the generic "API_KEY=..."). Truly generic
+  // inputs (API_KEY=... with no branded match) keep the generic label.
+  const specificValues = hard
+    .filter((m) => m.value && m.name !== "Generic API key / secret")
+    .map((m) => m.value);
+  for (let i = hard.length - 1; i >= 0; i -= 1) {
+    const m = hard[i];
+    if (m.name === "Generic API key / secret" && m.value) {
+      const overlaps = specificValues.some(
+        (v) => v.includes(m.value) || m.value.includes(v)
+      );
+      if (overlaps) hard.splice(i, 1);
+    }
+  }
+
   // Large paste alone is just a big paste (code, logs, prose). It only becomes a
   // hard "sensitive" block when it travels with a real secret signal.
   if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
@@ -776,7 +794,7 @@ function softGuardForDetector(name) {
   const n = String(name || "").toLowerCase();
   if (n.includes("email")) return { key: "emailReviewGuard", label: "Don't warn me for email addresses" };
   if (n.includes("phone")) return { key: "phoneReviewGuard", label: "Don't warn me for phone numbers" };
-  if (n.includes("large paste")) return { key: "largePasteGuard", label: "Don't warn me for large harmless paste" };
+  if (n.includes("large paste")) return { key: "largePasteGuard", label: "Don't warn me for large paste reviews" };
   return null;
 }
 
@@ -813,6 +831,30 @@ function openShieldVaultSettings() {
   }
 }
 
+// Frosted "liquid glass" surface for the catch cards — opaque-leaning (~92%) so
+// text stays legible on any page background. Falls back to a solid card for users
+// who prefer reduced transparency / higher contrast (accessibility + low-end perf).
+function svGlassStyles(solidBorder) {
+  const reduce =
+    typeof window.matchMedia === "function" &&
+    (window.matchMedia("(prefers-reduced-transparency: reduce)").matches ||
+      window.matchMedia("(prefers-contrast: more)").matches);
+  if (reduce) {
+    return [
+      "background:#fff",
+      "border:1px solid " + solidBorder,
+      "box-shadow:0 16px 40px rgba(15,23,42,0.24)",
+    ];
+  }
+  return [
+    "background:linear-gradient(135deg, rgba(255,255,255,0.93), rgba(244,247,255,0.86))",
+    "backdrop-filter:blur(20px) saturate(180%)",
+    "-webkit-backdrop-filter:blur(20px) saturate(180%)",
+    "border:1px solid rgba(255,255,255,0.7)",
+    "box-shadow:0 22px 55px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.95)",
+  ];
+}
+
 function showBlockedOverlay(el, text, detectorNames, options) {
   const previous = document.getElementById("shieldvault-blocked-overlay");
   if (previous) previous.remove();
@@ -836,9 +878,7 @@ function showBlockedOverlay(el, text, detectorNames, options) {
     "z-index:2147483647",
     "padding:14px",
     "border-radius:10px",
-    "background:#fff",
-    `border:1px solid ${accent}`,
-    "box-shadow:0 14px 34px rgba(15,23,42,0.22)",
+    ...svGlassStyles(accent),
     "color:#111827",
     "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
     "font-size:13px",
@@ -980,8 +1020,8 @@ function showReviewCard(detectorNames) {
   card.style.cssText = [
     "position:fixed", "right:18px", "bottom:18px",
     "width:min(320px,calc(100vw - 36px))", "z-index:2147483647",
-    "padding:12px 14px", "border-radius:10px", "background:#fff",
-    "border:1px solid #d1d5db", "box-shadow:0 12px 30px rgba(15,23,42,0.18)",
+    "padding:12px 14px", "border-radius:10px",
+    ...svGlassStyles("#d1d5db"),
     "color:#111827", "font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif",
     "font-size:13px", "line-height:1.35",
   ].join(";");
@@ -1085,10 +1125,8 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     "top:50%",
     "left:50%",
     "transform:translate(-50%,-50%)",
-    "background:#fff",
-    `border:1px solid ${accent}`,
     "border-radius:10px",
-    "box-shadow:0 18px 42px rgba(15,23,42,0.24)",
+    ...svGlassStyles(accent),
     "color:#111827",
     "padding:20px 22px",
     "max-width:420px",

@@ -21,9 +21,39 @@
 body {
   margin: 0;
   padding: 12px;
-  background: var(--bg);
+  /* Dark base gradient gives the frosted panels something to refract. */
+  background: radial-gradient(130% 100% at 50% 0%, #191d30 0%, #0b0d12 62%);
   color: var(--text);
   width: 320px;
+}
+
+/* Frosted "liquid glass" panels — translucent over the body gradient with a
+   soft inner highlight. Falls back to solid below for reduced-transparency. */
+.notice,
+.pause-bar,
+.proof-item {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Accessibility fallback: solid panels for users who prefer reduced
+   transparency or higher contrast — no blur, opaque backgrounds. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  body {
+    background: var(--bg);
+  }
+  .notice,
+  .pause-bar,
+  .proof-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+  }
 }
 
 h1 {
@@ -41,8 +71,6 @@ h1 {
 .notice {
   font-size: 10px;
   color: var(--muted);
-  background: var(--panel);
-  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px;
   margin-bottom: 10px;
@@ -93,9 +121,7 @@ button:disabled {
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 12px;
-  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel);
 }
 
 .pause-label {
@@ -152,8 +178,6 @@ button:disabled {
 }
 
 .proof-item {
-  background: var(--panel);
-  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
 }
@@ -174,6 +198,30 @@ button:disabled {
 
 .proof-time {
   font-size: 10px;
+  color: var(--muted);
+}
+
+.proof-outcome {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.proof-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.proof-meta span:not(:last-child)::after {
+  content: "·";
+  margin-left: 6px;
   color: var(--muted);
 }
 
