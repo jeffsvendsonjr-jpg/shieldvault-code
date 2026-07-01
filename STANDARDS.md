@@ -20,6 +20,28 @@ are intentional and reviewable, not left to a tool's defaults or to chance.
 - **Each guard is independent.** Turning off one category (secrets, PII,
   passwords, large paste) must not silently disable another. There is no master
   switch in `detectSecretMatches`.
+- **Hard block vs. soft review.** Only clearly sensitive content hard-blocks:
+  API keys/tokens, OAuth/client secrets, passwords, recovery phrases, private
+  keys, credit cards, SSNs, IBANs. Ordinary content that people legitimately
+  send every day — a plain **email address**, a **phone number**, or a **large
+  paste with no secret signal** — is a **soft review**: detected and logged as
+  metadata, never blocked and never redacted, so the user proceeds normally. A
+  large paste only escalates to a hard block when it travels with a real secret
+  signal. `detectSecretMatches` tags each match `soft: true|false`.
+- **Azure OpenAI requires an Azure-specific label.** The Azure detector only
+  matches an explicit `AZURE_OPENAI_API_KEY` / `azure…openai…api…key` label — not
+  a bare `api key` shape — so an unlabeled `API_KEY=…` is caught by the generic
+  API-key detector instead of being mislabeled as Azure.
+
+## Permissions
+
+Request the minimum. The extension ships with **`activeTab` + `storage`** only —
+no `tabs` permission (which triggers a broad "read your browsing history"
+warning). The popup reads the active tab's URL under `activeTab` (granted when
+the user opens the popup via the toolbar action), and `chrome.tabs.create` opens
+extension pages without any permission. Host access is limited to
+`https://shieldvault.site/*` (license/checkout) plus the content-script match
+list. Do not add permissions or hosts without a concrete, justified need.
 
 ## Privacy invariant
 

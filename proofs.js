@@ -12,6 +12,10 @@
     return proof && proof.category === 'behavioral';
   }
 
+  function isReviewProof(proof) {
+    return proof && proof.category === 'review';
+  }
+
   function proofTimestamp(proof) {
     return proof && (proof.timestamp || proof.ts || Date.now());
   }
@@ -33,7 +37,7 @@
 
   function renderSummary() {
     const secretProofs = proofs.filter(function (proof) {
-      return !isBehaviorProof(proof);
+      return !isBehaviorProof(proof) && !isReviewProof(proof);
     }).length;
     const behaviorProofs = proofs.filter(isBehaviorProof).length;
 
@@ -46,6 +50,12 @@
   function outcomeForProof(proof) {
     const detectors = Array.isArray(proof.detectors) ? proof.detectors.join(' ').toLowerCase() : '';
     if (isBehaviorProof(proof)) return 'Message cooled down';
+    if (isReviewProof(proof)) {
+      if (detectors.includes('email')) return 'Email noticed — allowed';
+      if (detectors.includes('phone')) return 'Phone number noticed — allowed';
+      if (detectors.includes('large paste')) return 'Large paste reviewed — allowed';
+      return 'Reviewed — allowed';
+    }
     if (detectors.includes('openai')) return 'OpenAI API key protected';
     if (detectors.includes('anthropic')) return 'Anthropic API key protected';
     if (
@@ -394,6 +404,15 @@
     });
   }
 
+  // Seed the buyer's email into memory on popup load (a fast local read that
+  // completes long before any button click), so checkout can attach it in a
+  // single synchronous window.open. Revalidation refreshes it afterward.
+  chrome.storage.local.get(['shieldvault_email'], function (result) {
+    if (!chrome.runtime.lastError && result.shieldvault_email) {
+      proEmail = result.shieldvault_email;
+    }
+  });
+
   applyProState();
   revalidateLicense();
 
@@ -403,40 +422,35 @@
     btn.disabled = true;
     btn.textContent = 'Opening…';
 
-    // Open the tab synchronously to preserve the click gesture (popup blockers
-    // reject an async window.open), then fill its URL once we've read the
-    // freshest email from storage. Reading at click time — not from a warmed-up
-    // variable — avoids the race where the first click fires before any seed has
-    // populated, which would drop &email= and reopen the unlinked-customer path.
-    const tab = window.open('', '_blank');
+    // Single SYNCHRONOUS open. Opening the tab closes the popup (focus shifts),
+    // which would cancel any pending async callback — so we must not do async
+    // work (e.g. a storage read) after opening, or the buyer lands on a blank
+    // tab. proEmail is seeded on popup load and refreshed by revalidation, so
+    // it's ready here; if it's empty the server falls back to the email Stripe
+    // collects at checkout, so the link still works.
+    let win = null;
+    try {
+      const emailParam = proEmail ? '&email=' + encodeURIComponent(proEmail) : '';
+      win = window.open(API_BASE + '/api/checkout/quick?plan=' + plan + emailParam, '_blank');
+    } catch (_) {
+      win = null;
+    }
 
-    function go(email) {
-      const emailParam = email ? '&email=' + encodeURIComponent(email) : '';
-      const url = API_BASE + '/api/checkout/quick?plan=' + plan + emailParam;
-      try {
-        if (tab && !tab.closed) {
-          tab.location = url;
-        } else {
-          window.open(url, '_blank');
-        }
-      } catch (_) {
-        window.open(url, '_blank');
-      }
+    // window.open returns null (without throwing) when the pop-up is blocked —
+    // give clear feedback and re-enable so the user can allow pop-ups and retry.
+    if (!win) {
+      btn.textContent = 'Allow pop-ups & retry';
+      btn.disabled = false;
       setTimeout(function () {
         btn.textContent = label;
-        btn.disabled = false;
-      }, 2000);
+      }, 4000);
+      return;
     }
 
-    try {
-      chrome.storage.local.get(['shieldvault_email'], function (result) {
-        const email =
-          (!chrome.runtime.lastError && result.shieldvault_email) || proEmail || '';
-        go(email);
-      });
-    } catch (_) {
-      go(proEmail);
-    }
+    setTimeout(function () {
+      btn.textContent = label;
+      btn.disabled = false;
+    }, 2000);
   }
 
   document.getElementById('btn-monthly').addEventListener('click', function () {
