@@ -177,6 +177,30 @@ button:disabled {
   color: var(--muted);
 }
 
+.proof-outcome {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.proof-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.proof-meta span:not(:last-child)::after {
+  content: "·";
+  margin-left: 6px;
+  color: var(--muted);
+}
+
 .proof-details {
   display: flex;
   flex-wrap: wrap;
