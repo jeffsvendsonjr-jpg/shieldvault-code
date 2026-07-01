@@ -89,6 +89,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
     SHIELDVAULT_PAUSED = isHostPaused(changes[SHIELDVAULT_PAUSED_DOMAINS_KEY].newValue);
   }
+  // A guard toggled from a catch card (or Settings) applies to every open tab.
+  if (changes[SHIELDVAULT_SETTINGS_KEY]) {
+    SHIELDVAULT_SETTINGS = mergeSettings(changes[SHIELDVAULT_SETTINGS_KEY].newValue);
+  }
 });
 
 // ================================
@@ -757,6 +761,43 @@ function blockedOutcome(detectorNames) {
   return "Secret protected";
 }
 
+// Map a detector name to the settings guard that controls it, plus a friendly
+// label — so a catch can offer "stop catching this type" in one click.
+function guardForDetector(name) {
+  const n = String(name || "").toLowerCase();
+  if (n.includes("password")) return { key: "passwordGuard", label: "password detection" };
+  if (n.includes("recovery") || n.includes("seed") || n.includes("mnemonic")) return { key: "recoveryPhraseGuard", label: "recovery-phrase detection" };
+  if (n.includes("client") || n.includes("customer")) return { key: "clientDataGuard", label: "client/customer-data detection" };
+  if (n.includes("large paste") || n.includes("large sensitive")) return { key: "largePasteGuard", label: "large-paste detection" };
+  if (n.includes("email") || n.includes("phone") || n.includes("credit card") || n.includes("card number") || n.includes("iban") || n.includes("private personal")) {
+    return { key: "privateInfoGuard", label: "personal-info detection" };
+  }
+  if (n.includes("token") || n.includes("pat")) return { key: "tokenGuard", label: "token detection" };
+  return { key: "secretGuard", label: "secret & API-key detection" };
+}
+
+// Distinct guards for a set of detector names (usually one).
+function guardsForDetectors(names) {
+  const seen = new Map();
+  for (const name of names || []) {
+    const guard = guardForDetector(name);
+    if (!seen.has(guard.key)) seen.set(guard.key, guard);
+  }
+  return [...seen.values()];
+}
+
+// Turn a guard off from a catch card. Persists to storage and updates the live
+// in-memory settings so it takes effect immediately, no reload needed.
+async function disableGuard(key) {
+  const updated = { ...SHIELDVAULT_SETTINGS, [key]: false };
+  SHIELDVAULT_SETTINGS = updated;
+  try {
+    await chrome.storage.local.set({ [SHIELDVAULT_SETTINGS_KEY]: updated });
+  } catch (_) {
+    // Storage failure — the in-memory update still applies for this session.
+  }
+}
+
 function showBlockedOverlay(el, text, detectorNames, options) {
   const previous = document.getElementById("shieldvault-blocked-overlay");
   if (previous) previous.remove();
@@ -812,6 +853,47 @@ function showBlockedOverlay(el, text, detectorNames, options) {
     : "Allow once, then retry the paste or drop within the window. Scoped to this site, field, and exact content.";
   scope.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:12px";
   overlay.appendChild(scope);
+
+  // Quick "stop catching this" — right-click the card (or click "More options")
+  // to reveal one-click toggles that turn off this catch type on all sites, so a
+  // false positive is a 2-second fix instead of an uninstall.
+  const manageGuards = guardsForDetectors(detectorNames);
+  let manageRow = null;
+  if (manageGuards.length) {
+    manageRow = document.createElement("div");
+    manageRow.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px";
+    for (const guard of manageGuards) {
+      const off = document.createElement("button");
+      off.type = "button";
+      off.textContent = "Stop catching " + guard.label;
+      off.style.cssText = [
+        "padding:5px 8px", "border-radius:6px", "border:1px dashed #d1d5db",
+        "background:transparent", "color:#6b7280", "cursor:pointer", "font-size:12px",
+      ].join(";");
+      off.addEventListener("click", async () => {
+        await disableGuard(guard.key);
+        blockedText = "";
+        overlay.remove();
+      });
+      manageRow.appendChild(off);
+    }
+    overlay.appendChild(manageRow);
+
+    const moreOptions = document.createElement("button");
+    moreOptions.type = "button";
+    moreOptions.textContent = "More options";
+    moreOptions.style.cssText = "background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;padding:0;margin-bottom:10px;text-decoration:underline";
+    moreOptions.addEventListener("click", () => {
+      manageRow.style.display = manageRow.style.display === "none" ? "flex" : "none";
+    });
+    overlay.appendChild(moreOptions);
+
+    // Right-click anywhere on the card reveals the quick toggles.
+    overlay.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      manageRow.style.display = "flex";
+    });
+  }
 
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
