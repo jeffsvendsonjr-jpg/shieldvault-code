@@ -559,6 +559,24 @@ function detectSecretMatches(text) {
     soft.push({ name: "Phone number", value: null });
   }
 
+  // When a provider-specific detector already caught the same item, drop the
+  // redundant "Generic API key / secret" label. Overlap = the generic match's
+  // value and a specific match's value contain each other (e.g. Azure's
+  // "AZURE_OPENAI_API_KEY=..." contains the generic "API_KEY=..."). Truly generic
+  // inputs (API_KEY=... with no branded match) keep the generic label.
+  const specificValues = hard
+    .filter((m) => m.value && m.name !== "Generic API key / secret")
+    .map((m) => m.value);
+  for (let i = hard.length - 1; i >= 0; i -= 1) {
+    const m = hard[i];
+    if (m.name === "Generic API key / secret" && m.value) {
+      const overlaps = specificValues.some(
+        (v) => v.includes(m.value) || m.value.includes(v)
+      );
+      if (overlaps) hard.splice(i, 1);
+    }
+  }
+
   // Large paste alone is just a big paste (code, logs, prose). It only becomes a
   // hard "sensitive" block when it travels with a real secret signal.
   if (SHIELDVAULT_SETTINGS.largePasteGuard && text.length > 1800) {
@@ -776,7 +794,7 @@ function softGuardForDetector(name) {
   const n = String(name || "").toLowerCase();
   if (n.includes("email")) return { key: "emailReviewGuard", label: "Don't warn me for email addresses" };
   if (n.includes("phone")) return { key: "phoneReviewGuard", label: "Don't warn me for phone numbers" };
-  if (n.includes("large paste")) return { key: "largePasteGuard", label: "Don't warn me for large harmless paste" };
+  if (n.includes("large paste")) return { key: "largePasteGuard", label: "Don't warn me for large paste reviews" };
   return null;
 }
 
