@@ -1052,7 +1052,7 @@ function showReviewCard(detectorNames) {
   card.appendChild(title);
 
   const detail = document.createElement("div");
-  detail.textContent = "Your message was allowed. No message content was stored.";
+  detail.textContent = "Your message was allowed. Only a metadata-only activity record was saved.";
   detail.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:10px";
   card.appendChild(detail);
 
