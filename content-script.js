@@ -58,6 +58,13 @@ const SHIELDVAULT_REVIEW_SHOWN = new Set();
 // twice (paste fires, then submit fires seconds later). Key is the category
 // name only — never matched content — and the page implies the domain. Distinct
 // categories stay independent: a phone review never suppresses an email review.
+// NOTE: this state is frame-local (the manifest injects with all_frames:true,
+// so each iframe gets its own map). That is acceptable by design: a single user
+// action (one paste, one submit) fires its event in exactly one frame — the one
+// holding focus — so one action cannot double-log across frames. Two events in
+// two different frames are genuinely separate edits and SHOULD both record.
+// Do not centralize this in the background worker unless a real duplicate is
+// observed; a shared key would add IPC for no demonstrated benefit.
 const SHIELDVAULT_RECENT_REVIEWS = new Map();
 const SHIELDVAULT_REVIEW_DEDUP_MS = 10000;
 
@@ -1052,7 +1059,7 @@ function showReviewCard(detectorNames) {
   card.appendChild(title);
 
   const detail = document.createElement("div");
-  detail.textContent = "Your message was allowed. Only a metadata-only activity record was saved.";
+  detail.textContent = "Your message was allowed. No message content was saved.";
   detail.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:10px";
   card.appendChild(detail);
 
