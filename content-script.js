@@ -1184,9 +1184,9 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     <ul id="sv-warning-list" style="margin:0 0 14px;padding-left:18px;color:#92400e"></ul>
     <p style="margin:0 0 16px;color:#6b7280;font-size:13px">Your message content is not stored. Edit now, or allow this exact message once and submit again within 5 seconds.</p>
     <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center">
-      <button id="sv-disable-btn" style="margin-right:auto;padding:7px 10px;border-radius:7px;border:1px dashed rgba(180,83,9,0.55);background:transparent;color:#92400e;cursor:pointer;font-size:12px"></button>
-      <button id="sv-edit-btn" style="padding:8px 14px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#111827;cursor:pointer;font-size:14px">Edit message</button>
-      <button id="sv-send-btn" style="padding:8px 14px;border-radius:7px;border:none;color:#fff;cursor:pointer;font-size:14px;font-weight:600">Allow once</button>
+      <button id="sv-disable-btn" style="margin-right:auto;padding:6px 8px;border-radius:7px;border:1px dashed rgba(180,83,9,0.55);background:transparent;color:#92400e;cursor:pointer;font-size:11px;white-space:nowrap"></button>
+      <button id="sv-edit-btn" style="padding:8px 12px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#111827;cursor:pointer;font-size:14px;white-space:nowrap">Edit message</button>
+      <button id="sv-send-btn" style="padding:8px 12px;border-radius:7px;border:none;color:#fff;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap">Allow once</button>
     </div>
   `;
   // textContent (not innerHTML interpolation) for the label — house rule for
