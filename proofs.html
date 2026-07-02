@@ -52,15 +52,15 @@
     <h2 class="section-title">Recent Activity</h2>
 
     <div class="controls">
-      <span class="count" id="count">—</span>
+      <span class="count">Newest first &middot; metadata only</span>
       <button class="clear-btn" id="clear-btn">Clear History</button>
     </div>
 
     <div id="proof-container">
       <div class="empty-state" id="empty-state">
         <div class="icon">&#10003;</div>
-        <p>No preventions recorded yet</p>
-        <p class="hint">When ShieldVault blocks a secret, it will appear here</p>
+        <p>No activity recorded yet</p>
+        <p class="hint">When ShieldVault protects something, it will appear here</p>
       </div>
       <div class="proof-list" id="proof-list"></div>
     </div>
@@ -113,6 +113,10 @@
     <div class="pro-active" id="pro-active" style="display: none;">
       <div class="pro-active-badge">PRO</div>
       <p>Thanks for supporting ShieldVault!</p>
+      <p class="pro-plan-line" id="pro-plan-line" style="display: none;"></p>
+      <button class="pro-upgrade-lifetime" id="btn-upgrade-lifetime" style="display: none;">
+        Upgrade to Lifetime &mdash; $39 once, stop paying monthly
+      </button>
       <button class="pro-reset-link" id="btn-reset-pro">Deactivate Pro</button>
     </div>
 

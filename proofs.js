@@ -120,19 +120,17 @@
   function renderProofs() {
     const container = document.getElementById('proof-list');
     const empty = document.getElementById('empty-state');
-    const count = document.getElementById('count');
 
+    // The event total lives in the activity summary — no separate counter here.
     if (!proofs.length) {
       empty.style.display = '';
       container.style.display = 'none';
-      count.textContent = '0 activity events';
       renderSummary();
       return;
     }
 
     empty.style.display = 'none';
     container.style.display = 'flex';
-    count.textContent = proofs.length + (proofs.length === 1 ? ' activity event' : ' activity events');
 
     container.innerHTML = '';
     for (const p of proofs) {
@@ -337,10 +335,14 @@
     const expiry =
       typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
     if (data.email) proEmail = data.email;
+    // If the server omits the plan, infer it from the expiry: a renewal date
+    // means monthly, no expiry means lifetime. Keeps the plan line + lifetime
+    // upsell working for older server responses.
+    const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
     chrome.storage.local.set({
       shieldvault_pro: true,
       shieldvault_pro_expiry: expiry,
-      shieldvault_pro_plan: data.plan || '',
+      shieldvault_pro_plan: plan,
       shieldvault_license_key: data.key || '',
       shieldvault_tier: data.tier || 'plus',
       shieldvault_email: data.email || proEmail || '',
@@ -369,11 +371,44 @@
       sectionUpgrade.style.display = 'none';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = '';
+      renderProPlanDetails();
     } else {
       sectionUpgrade.style.display = '';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = 'none';
     }
+  }
+
+  // Monthly subscribers see their renewal date and a one-click path to the
+  // lifetime plan (the server links the upgrade to the same Stripe customer).
+  // Lifetime owners just see their plan — no upsell.
+  function renderProPlanDetails() {
+    const planLine = document.getElementById('pro-plan-line');
+    const upgradeBtn = document.getElementById('btn-upgrade-lifetime');
+    if (!planLine || !upgradeBtn) return;
+    chrome.storage.local.get(
+      ['shieldvault_pro_plan', 'shieldvault_pro_expiry'],
+      function (result) {
+        if (chrome.runtime.lastError) return;
+        const expiry = result.shieldvault_pro_expiry;
+        const hasExpiry = typeof expiry === 'number' && expiry > 0;
+        // Unknown/absent plan (older stored state) is inferred from the expiry
+        // so the lifetime upsell is only hidden for confirmed lifetime owners.
+        const plan = result.shieldvault_pro_plan || (hasExpiry ? 'monthly' : 'lifetime');
+        if (plan === 'lifetime') {
+          planLine.textContent = 'Lifetime plan';
+          planLine.style.display = '';
+          upgradeBtn.style.display = 'none';
+        } else {
+          const renews = hasExpiry
+            ? ' — renews ' + new Date(expiry).toLocaleDateString([], { month: 'short', day: 'numeric' })
+            : '';
+          planLine.textContent = 'Monthly plan' + renews;
+          planLine.style.display = '';
+          upgradeBtn.style.display = '';
+        }
+      }
+    );
   }
 
   // Re-check a stored license with the server so monthly renewals extend and
@@ -461,6 +496,13 @@
     openCheckout('lifetime', this, '$39 once');
   });
 
+  const upgradeLifetimeBtn = document.getElementById('btn-upgrade-lifetime');
+  if (upgradeLifetimeBtn) {
+    upgradeLifetimeBtn.addEventListener('click', function () {
+      openCheckout('lifetime', this, 'Upgrade to Lifetime — $39 once, stop paying monthly');
+    });
+  }
+
   // ── License key flow ─────────────────────────────────────────────────────────
 
   document.getElementById('btn-already-purchased').addEventListener('click', function () {
@@ -520,7 +562,22 @@
     }
   });
 
+  // Two-step confirm: deactivating forgets the stored license key, so a stray
+  // click shouldn't force the user to go dig it out of their email.
+  let resetConfirmTimer = null;
   document.getElementById('btn-reset-pro').addEventListener('click', function () {
+    const btn = this;
+    if (!resetConfirmTimer) {
+      btn.textContent = 'Click again to confirm — this forgets your license key';
+      resetConfirmTimer = setTimeout(function () {
+        resetConfirmTimer = null;
+        btn.textContent = 'Deactivate Pro';
+      }, 5000);
+      return;
+    }
+    clearTimeout(resetConfirmTimer);
+    resetConfirmTimer = null;
+    btn.textContent = 'Deactivate Pro';
     clearProStatus();
     applyProState();
   });

@@ -250,6 +250,19 @@ const DETECTORS = [
   // Require a heroku label nearby to avoid wiping unrelated content.
   { name: "Heroku API Key", pattern: /heroku[^\n\r]{0,40}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i },
 
+  // Infrastructure and platform tokens
+  { name: "Telegram Bot Token", pattern: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/ },
+  { name: "DigitalOcean Token", pattern: /dop_v1_[a-f0-9]{64}/ },
+  { name: "Replicate API Token", pattern: /r8_[A-Za-z0-9]{30,}/ },
+  { name: "xAI API Key", pattern: /xai-[A-Za-z0-9]{60,}/ },
+  { name: "Databricks Token", pattern: /dapi[a-f0-9]{32}/ },
+  { name: "HashiCorp Vault Token", pattern: /hvs\.[A-Za-z0-9_-]{24,}/ },
+  { name: "Tailscale Auth Key", pattern: /tskey-(?:auth|api|client)-[A-Za-z0-9]+-[A-Za-z0-9]+/ },
+
+  // Crypto wallets — context-bound: a bare 64-hex string matches SHA-256 hashes,
+  // so require an explicit private-key label nearby before treating it as a wallet key.
+  { name: "Crypto wallet private key", pattern: /private[_\s-]*key[^\n\r]{0,20}(?:0x)?[0-9a-fA-F]{64}/i },
+
   // SaaS and product APIs
   { name: "Notion Integration Token", pattern: /ntn_[A-Za-z0-9]{40,}/ },
   { name: "Linear API Key", pattern: /lin_api_[A-Za-z0-9]{40,}/ },
@@ -1113,8 +1126,26 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   // Avoid stacking duplicate modals
   if (document.getElementById("shieldvault-behavioral-modal")) return;
 
-  // Freeze the input so the text stays visible but the user can't type more
-  if (el) el.setAttribute("readonly", "true");
+  // Freeze the input so the text stays visible but the user can't type more.
+  // `readonly` only works on INPUT/TEXTAREA — contenteditable composers
+  // (ChatGPT, X, Discord) ignore it, so those are frozen via contentEditable.
+  const wasContentEditable = Boolean(el && el.isContentEditable);
+  const wasReadonly = Boolean(el && !wasContentEditable && el.hasAttribute("readonly"));
+  if (el) {
+    if (wasContentEditable) {
+      el.contentEditable = "false";
+    } else if (!wasReadonly) {
+      el.setAttribute("readonly", "true");
+    }
+  }
+  function unfreezeField() {
+    if (!el) return;
+    if (wasContentEditable) {
+      el.contentEditable = "true";
+    } else if (!wasReadonly) {
+      el.removeAttribute("readonly");
+    }
+  }
 
   const accent = surfaceAccentColor();
   const surface = currentSurfaceName();
@@ -1182,9 +1213,6 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   // Context-aware cooldown: the calmer you're being asked to be, the longer the
   // "allow once" button stays disabled so there's a real beat before sending.
   const cooldownMs = { low: 2000, medium: 4000, high: 8000 }[maxSeverity] || 2000;
-  const cooldownLabel = { low: "low", medium: "medium", high: "high" }[maxSeverity];
-  const title2 = modal.querySelector("#sv-behavior-title");
-  if (title2) title2.textContent = "ShieldVault - Regret Check (" + cooldownLabel + ")";
 
   if (sendBtn) {
     const allowLabel = sendBtn.textContent;
@@ -1208,18 +1236,31 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     }, 250);
   }
 
-  document.getElementById("sv-edit-btn").addEventListener("click", () => {
+  function teardownModal() {
     modal.remove();
-    if (el) {
-      el.removeAttribute("readonly");
-      el.focus();
-    }
-  });
+    document.removeEventListener("keydown", onEscape, true);
+    unfreezeField();
+  }
+
+  function closeToEdit() {
+    teardownModal();
+    if (el) el.focus();
+  }
+
+  // Escape = "let me edit" — the calmest exit should also be the fastest.
+  function onEscape(e) {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    closeToEdit();
+  }
+  document.addEventListener("keydown", onEscape, true);
+
+  document.getElementById("sv-edit-btn").addEventListener("click", closeToEdit);
 
   document.getElementById("sv-send-btn").addEventListener("click", () => {
-    modal.remove();
+    teardownModal();
     if (el) {
-      el.removeAttribute("readonly");
       el.dataset.shieldvaultBypass = "true";
       setTimeout(() => {
         delete el.dataset.shieldvaultBypass;
@@ -1233,11 +1274,7 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     : "emotional";
   document.getElementById("sv-disable-btn").addEventListener("click", async () => {
     await disableSubjectiveWarning(disableType);
-    modal.remove();
-    if (el) {
-      el.removeAttribute("readonly");
-      el.focus();
-    }
+    closeToEdit();
   });
 }
 
@@ -1396,7 +1433,10 @@ document.addEventListener(
 document.addEventListener(
   "keydown",
   (e) => {
-    if (e.key !== "Enter") return;
+    // Shift+Enter is "newline" in every chat UI, not "send" — swallowing it
+    // would trap the user. Real submits still hit the plain-Enter path, and
+    // any secret in the field is already redacted by the input fallback.
+    if (e.key !== "Enter" || e.shiftKey) return;
 
     const el = getActiveEditable();
     if (!el) return;

@@ -33,6 +33,23 @@
     .toggle input:checked + .slider::before { transform: translateX(18px); }
     .saved { color: var(--good); font-size: 12px; opacity: 0; transition: opacity .2s; }
     .saved.show { opacity: 1; }
+    .pro-chip {
+      display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .04em;
+      color: #000; background: #f4b740; border-radius: 4px; padding: 1px 5px;
+      margin-left: 6px; vertical-align: 1px;
+    }
+    .pro-note {
+      display: none; font-size: 12px; color: #f4b740; margin: 8px 0 0;
+      padding: 8px 10px; border: 1px solid rgba(244,183,64,0.35); border-radius: 8px;
+      background: rgba(244,183,64,0.08);
+    }
+    .pro-note.show { display: block; }
+    .upsell {
+      border-color: rgba(244,183,64,0.3);
+      background: linear-gradient(135deg, rgba(244,183,64,0.07), rgba(244,183,64,0.02));
+    }
+    .upsell p { color: var(--muted); font-size: 12px; margin: 0 0 6px; line-height: 1.5; }
+    .upsell .price { color: #f4b740; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -60,17 +77,25 @@
     </section>
 
     <section class="panel">
-      <h2>Optional Reputation Guard</h2>
+      <h2>Optional Reputation Guard <span class="pro-chip">PRO</span></h2>
       <p class="hint">Default: OFF</p>
       <div class="row"><span class="label">Enable Reputation Guard</span><label class="toggle"><input id="reputationGuard" type="checkbox"><span class="slider"></span></label></div>
       <div class="row"><span class="label">Late-night posting check</span><label class="toggle"><input id="lateNightPostAlert" type="checkbox"><span class="slider"></span></label></div>
       <div class="row"><span class="label">Emotionally heated / rage-post warning</span><label class="toggle"><input id="emotionalPostWarning" type="checkbox"><span class="slider"></span></label></div>
+      <p class="pro-note" id="reputation-pro-note">These checks run with ShieldVault Pro. Your toggle is saved — it activates the moment you upgrade from the toolbar popup.</p>
     </section>
 
     <section class="panel">
-      <h2>Pro extras</h2>
+      <h2>Pro extras <span class="pro-chip">PRO</span></h2>
       <p class="hint">Requires ShieldVault Pro. Default: OFF</p>
       <div class="row"><span class="label">Play a sound when a secret is blocked</span><label class="toggle"><input id="soundOnBlock" type="checkbox"><span class="slider"></span></label></div>
+      <p class="pro-note" id="sound-pro-note">Sound on block runs with ShieldVault Pro. Your toggle is saved — it activates the moment you upgrade from the toolbar popup.</p>
+    </section>
+
+    <section class="panel upsell" id="pro-upsell" style="display: none;">
+      <h2>ShieldVault Pro</h2>
+      <p>Behavioral detection (rage, threats, late-night guard), local rephrasing suggestions, context-aware cooldowns, and sound on block.</p>
+      <p><span class="price">$4.99/mo or $39 once (lifetime)</span> &mdash; upgrade from the ShieldVault toolbar popup.</p>
     </section>
 
     <div class="saved" id="saved-msg">Settings saved.</div>
