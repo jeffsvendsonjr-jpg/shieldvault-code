@@ -1168,17 +1168,30 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     "line-height:1.5",
   ].join(";");
 
+  // Which subjective category tripped this modal — "Turn off" disables that
+  // whole category (all tone checks, or the late-night check), so the button
+  // says so instead of a vague "Turn off".
+  const disableType = Array.isArray(warningTypes) && warningTypes.includes("lateNight")
+    ? "lateNight"
+    : "emotional";
+  const disableLabel = disableType === "lateNight"
+    ? "\u{1F515} Turn off late-night check"
+    : "\u{1F515} Turn off tone checks";
+
   modal.innerHTML = `
     <div id="sv-behavior-title" style="font-size:17px;font-weight:700;margin-bottom:8px">ShieldVault - Regret Check</div>
     <p style="margin:0 0 10px;color:#374151">A local tone check noticed this before it leaves ${surface}:</p>
     <ul id="sv-warning-list" style="margin:0 0 14px;padding-left:18px;color:#92400e"></ul>
     <p style="margin:0 0 16px;color:#6b7280;font-size:13px">Your message content is not stored. Edit now, or allow this exact message once and submit again within 5 seconds.</p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button id="sv-disable-btn" style="padding:8px 12px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#374151;cursor:pointer;font-size:13px">Turn off</button>
-      <button id="sv-edit-btn" style="padding:8px 14px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#111827;cursor:pointer;font-size:14px">Edit message</button>
-      <button id="sv-send-btn" style="padding:8px 14px;border-radius:7px;border:none;color:#fff;cursor:pointer;font-size:14px;font-weight:600">Allow once</button>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center">
+      <button id="sv-disable-btn" style="margin-right:auto;padding:6px 8px;border-radius:7px;border:1px dashed rgba(180,83,9,0.55);background:transparent;color:#92400e;cursor:pointer;font-size:11px;white-space:nowrap"></button>
+      <button id="sv-edit-btn" style="padding:8px 12px;border-radius:7px;border:1px solid #d1d5db;background:transparent;color:#111827;cursor:pointer;font-size:14px;white-space:nowrap">Edit message</button>
+      <button id="sv-send-btn" style="padding:8px 12px;border-radius:7px;border:none;color:#fff;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap">Allow once</button>
     </div>
   `;
+  // textContent (not innerHTML interpolation) for the label — house rule for
+  // any string that could ever become dynamic.
+  modal.querySelector("#sv-disable-btn").textContent = disableLabel;
 
   document.body.appendChild(modal);
 
@@ -1269,9 +1282,6 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     }
   });
 
-  const disableType = Array.isArray(warningTypes) && warningTypes.includes("lateNight")
-    ? "lateNight"
-    : "emotional";
   document.getElementById("sv-disable-btn").addEventListener("click", async () => {
     await disableSubjectiveWarning(disableType);
     closeToEdit();
