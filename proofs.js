@@ -120,19 +120,17 @@
   function renderProofs() {
     const container = document.getElementById('proof-list');
     const empty = document.getElementById('empty-state');
-    const count = document.getElementById('count');
 
+    // The event total lives in the activity summary — no separate counter here.
     if (!proofs.length) {
       empty.style.display = '';
       container.style.display = 'none';
-      count.textContent = '0 activity events';
       renderSummary();
       return;
     }
 
     empty.style.display = 'none';
     container.style.display = 'flex';
-    count.textContent = proofs.length + (proofs.length === 1 ? ' activity event' : ' activity events');
 
     container.innerHTML = '';
     for (const p of proofs) {
@@ -369,11 +367,42 @@
       sectionUpgrade.style.display = 'none';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = '';
+      renderProPlanDetails();
     } else {
       sectionUpgrade.style.display = '';
       sectionLicense.style.display = 'none';
       sectionActive.style.display = 'none';
     }
+  }
+
+  // Monthly subscribers see their renewal date and a one-click path to the
+  // lifetime plan (the server links the upgrade to the same Stripe customer).
+  // Lifetime owners just see their plan — no upsell.
+  function renderProPlanDetails() {
+    const planLine = document.getElementById('pro-plan-line');
+    const upgradeBtn = document.getElementById('btn-upgrade-lifetime');
+    if (!planLine || !upgradeBtn) return;
+    chrome.storage.local.get(
+      ['shieldvault_pro_plan', 'shieldvault_pro_expiry'],
+      function (result) {
+        if (chrome.runtime.lastError) return;
+        const plan = result.shieldvault_pro_plan || '';
+        const expiry = result.shieldvault_pro_expiry;
+        if (plan === 'monthly') {
+          const renews =
+            typeof expiry === 'number' && expiry > 0
+              ? ' — renews ' + new Date(expiry).toLocaleDateString([], { month: 'short', day: 'numeric' })
+              : '';
+          planLine.textContent = 'Monthly plan' + renews;
+          planLine.style.display = '';
+          upgradeBtn.style.display = '';
+        } else {
+          planLine.textContent = plan === 'lifetime' ? 'Lifetime plan' : '';
+          planLine.style.display = plan === 'lifetime' ? '' : 'none';
+          upgradeBtn.style.display = 'none';
+        }
+      }
+    );
   }
 
   // Re-check a stored license with the server so monthly renewals extend and
@@ -461,6 +490,13 @@
     openCheckout('lifetime', this, '$39 once');
   });
 
+  const upgradeLifetimeBtn = document.getElementById('btn-upgrade-lifetime');
+  if (upgradeLifetimeBtn) {
+    upgradeLifetimeBtn.addEventListener('click', function () {
+      openCheckout('lifetime', this, 'Upgrade to Lifetime — $39 once, stop paying monthly');
+    });
+  }
+
   // ── License key flow ─────────────────────────────────────────────────────────
 
   document.getElementById('btn-already-purchased').addEventListener('click', function () {
@@ -520,7 +556,22 @@
     }
   });
 
+  // Two-step confirm: deactivating forgets the stored license key, so a stray
+  // click shouldn't force the user to go dig it out of their email.
+  let resetConfirmTimer = null;
   document.getElementById('btn-reset-pro').addEventListener('click', function () {
+    const btn = this;
+    if (!resetConfirmTimer) {
+      btn.textContent = 'Click again to confirm — this forgets your license key';
+      resetConfirmTimer = setTimeout(function () {
+        resetConfirmTimer = null;
+        btn.textContent = 'Deactivate Pro';
+      }, 5000);
+      return;
+    }
+    clearTimeout(resetConfirmTimer);
+    resetConfirmTimer = null;
+    btn.textContent = 'Deactivate Pro';
     clearProStatus();
     applyProState();
   });
