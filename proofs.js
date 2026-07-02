@@ -331,7 +331,7 @@
   //   - monthly   → data.expiresAt is the period end → stored and re-checked
   // We deliberately do NOT invent a local 30-day window here; that previously
   // expired lifetime purchases and never tracked real renewal.
-  function saveProStatus(data) {
+  async function saveProStatus(data) {
     const expiry =
       typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
     if (data.email) proEmail = data.email;
@@ -339,7 +339,9 @@
     // means monthly, no expiry means lifetime. Keeps the plan line + lifetime
     // upsell working for older server responses.
     const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
-    chrome.storage.local.set({
+    // Awaited so callers never repaint the UI from a stale read that raced
+    // this write. Failures propagate to the caller instead of vanishing.
+    await chrome.storage.local.set({
       shieldvault_pro: true,
       shieldvault_pro_expiry: expiry,
       shieldvault_pro_plan: plan,
@@ -349,9 +351,14 @@
     });
   }
 
-  function clearProStatus() {
+  // Removes the LOCAL license record only. There is no billing-management /
+  // Stripe customer-portal route in this codebase today, so subscription
+  // cancellation requires backend support (a customer-portal endpoint) before
+  // a "Manage billing" button can exist here — do not add one until the route
+  // is real and verified.
+  async function clearProStatus() {
     proEmail = '';
-    chrome.storage.local.remove([
+    await chrome.storage.local.remove([
       "shieldvault_pro",
       "shieldvault_pro_expiry",
       "shieldvault_pro_plan",
@@ -385,6 +392,7 @@
   function renderProPlanDetails() {
     const planLine = document.getElementById('pro-plan-line');
     const upgradeBtn = document.getElementById('btn-upgrade-lifetime');
+    const upgradeNote = document.getElementById('pro-upgrade-note');
     if (!planLine || !upgradeBtn) return;
     chrome.storage.local.get(
       ['shieldvault_pro_plan', 'shieldvault_pro_expiry'],
@@ -399,6 +407,7 @@
           planLine.textContent = 'Lifetime plan';
           planLine.style.display = '';
           upgradeBtn.style.display = 'none';
+          if (upgradeNote) upgradeNote.style.display = 'none';
         } else {
           const renews = hasExpiry
             ? ' — renews ' + new Date(expiry).toLocaleDateString([], { month: 'short', day: 'numeric' })
@@ -406,6 +415,7 @@
           planLine.textContent = 'Monthly plan' + renews;
           planLine.style.display = '';
           upgradeBtn.style.display = '';
+          if (upgradeNote) upgradeNote.style.display = '';
         }
       }
     );
@@ -428,13 +438,15 @@
         if (!res.ok) return; // transient — leave state untouched
         const data = await res.json();
         if (data && data.valid) {
-          saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt, email: data.email });
+          await saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt, email: data.email });
         } else {
-          clearProStatus(); // server says this key is no longer entitled
+          await clearProStatus(); // server says this key is no longer entitled
         }
-        applyProState();
-      } catch (_) {
-        // Offline or server down: keep current state, retry next open.
+        await applyProState();
+      } catch (err) {
+        // Offline or server down: keep current state, retry next open. Logged
+        // (not swallowed) so a persistent storage failure is visible in devtools.
+        console.warn('[ShieldVault] license revalidation failed:', err);
       }
     });
   }
@@ -499,7 +511,7 @@
   const upgradeLifetimeBtn = document.getElementById('btn-upgrade-lifetime');
   if (upgradeLifetimeBtn) {
     upgradeLifetimeBtn.addEventListener('click', function () {
-      openCheckout('lifetime', this, 'Upgrade to Lifetime — $39 once, stop paying monthly');
+      openCheckout('lifetime', this, 'Upgrade to Lifetime — $39 one-time payment');
     });
   }
 
@@ -546,14 +558,14 @@
       }
       const data = await res.json();
       if (!data.valid) throw new Error('Invalid license key');
-      saveProStatus({
+      await saveProStatus({
         key,
         tier: data.tier || 'plus',
         plan: data.plan,
         expiresAt: data.expiresAt,
         email: data.email,
       });
-      applyProState();
+      await applyProState();
     } catch (err) {
       errorEl.textContent = err.message || 'Activation failed. Please try again.';
       errorEl.style.display = '';
@@ -568,17 +580,20 @@
   document.getElementById('btn-reset-pro').addEventListener('click', function () {
     const btn = this;
     if (!resetConfirmTimer) {
-      btn.textContent = 'Click again to confirm — this forgets your license key';
+      btn.textContent = 'Removes the license from this browser only — it does NOT cancel your subscription. Click again to confirm.';
       resetConfirmTimer = setTimeout(function () {
         resetConfirmTimer = null;
-        btn.textContent = 'Deactivate Pro';
+        btn.textContent = 'Remove license from this browser';
       }, 5000);
       return;
     }
     clearTimeout(resetConfirmTimer);
     resetConfirmTimer = null;
-    btn.textContent = 'Deactivate Pro';
-    clearProStatus();
-    applyProState();
+    btn.textContent = 'Remove license from this browser';
+    clearProStatus()
+      .then(function () { return applyProState(); })
+      .catch(function (err) {
+        console.warn('[ShieldVault] license removal failed:', err);
+      });
   });
 })();

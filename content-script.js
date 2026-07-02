@@ -54,6 +54,13 @@ let SHIELDVAULT_FIELD_ID_SEQ = 0;
 // email/phone content doesn't nag on every message.
 const SHIELDVAULT_REVIEW_SHOWN = new Set();
 
+// Debounce soft-review ACTIVITY RECORDS per category so one message doesn't log
+// twice (paste fires, then submit fires seconds later). Key is the category
+// name only — never matched content — and the page implies the domain. Distinct
+// categories stay independent: a phone review never suppresses an email review.
+const SHIELDVAULT_RECENT_REVIEWS = new Map();
+const SHIELDVAULT_REVIEW_DEDUP_MS = 10000;
+
 // ================================
 // PAUSED DOMAINS — skip all detection on sites the user paused
 // ================================
@@ -1045,7 +1052,7 @@ function showReviewCard(detectorNames) {
   card.appendChild(title);
 
   const detail = document.createElement("div");
-  detail.textContent = "Your message was allowed. Nothing was stored.";
+  detail.textContent = "Your message was allowed. Only a metadata-only activity record was saved.";
   detail.style.cssText = "color:#6b7280;font-size:12px;margin-bottom:10px";
   card.appendChild(detail);
 
@@ -1131,9 +1138,14 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   // (ChatGPT, X, Discord) ignore it, so those are frozen via contentEditable.
   const wasContentEditable = Boolean(el && el.isContentEditable);
   const wasReadonly = Boolean(el && !wasContentEditable && el.hasAttribute("readonly"));
+  // Snapshot the exact original contenteditable attribute so restore is exact:
+  // inherited editability (no attribute) must not gain one, and explicit values
+  // like "plaintext-only" must come back verbatim — never forced to "true".
+  const editableAttrHad = wasContentEditable && el.hasAttribute("contenteditable");
+  const editableAttrValue = editableAttrHad ? el.getAttribute("contenteditable") : null;
   if (el) {
     if (wasContentEditable) {
-      el.contentEditable = "false";
+      el.setAttribute("contenteditable", "false");
     } else if (!wasReadonly) {
       el.setAttribute("readonly", "true");
     }
@@ -1141,7 +1153,11 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   function unfreezeField() {
     if (!el) return;
     if (wasContentEditable) {
-      el.contentEditable = "true";
+      if (editableAttrHad) {
+        el.setAttribute("contenteditable", editableAttrValue);
+      } else {
+        el.removeAttribute("contenteditable");
+      }
     } else if (!wasReadonly) {
       el.removeAttribute("readonly");
     }
@@ -1346,7 +1362,18 @@ function handleDetection(text, el, vector, event) {
     const hasEvent = event && typeof event.preventDefault === "function";
     if (hasEvent) {
       const names = [...new Set(softMatches.map((m) => m.name))];
-      notifyBackground(names, vector, "review");
+      // Record an activity event only for categories not logged in the last few
+      // seconds — paste-then-submit of the same message logs once, not twice.
+      // Hard blocks are never deduplicated; this applies to reviews only.
+      const now = Date.now();
+      const fresh = names.filter((name) => {
+        const last = SHIELDVAULT_RECENT_REVIEWS.get(name);
+        return !last || now - last > SHIELDVAULT_REVIEW_DEDUP_MS;
+      });
+      if (fresh.length) {
+        fresh.forEach((name) => SHIELDVAULT_RECENT_REVIEWS.set(name, now));
+        notifyBackground(fresh, vector, "review");
+      }
       showReviewCard(names);
       devWarn(`Soft review (allowed): ${names.join(", ")} via ${vector}`);
     }
