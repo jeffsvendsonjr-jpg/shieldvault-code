@@ -1130,10 +1130,11 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   // `readonly` only works on INPUT/TEXTAREA — contenteditable composers
   // (ChatGPT, X, Discord) ignore it, so those are frozen via contentEditable.
   const wasContentEditable = Boolean(el && el.isContentEditable);
+  const wasReadonly = Boolean(el && !wasContentEditable && el.hasAttribute("readonly"));
   if (el) {
     if (wasContentEditable) {
       el.contentEditable = "false";
-    } else {
+    } else if (!wasReadonly) {
       el.setAttribute("readonly", "true");
     }
   }
@@ -1141,7 +1142,7 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     if (!el) return;
     if (wasContentEditable) {
       el.contentEditable = "true";
-    } else {
+    } else if (!wasReadonly) {
       el.removeAttribute("readonly");
     }
   }
@@ -1235,10 +1236,14 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
     }, 250);
   }
 
-  function closeToEdit() {
+  function teardownModal() {
     modal.remove();
     document.removeEventListener("keydown", onEscape, true);
     unfreezeField();
+  }
+
+  function closeToEdit() {
+    teardownModal();
     if (el) el.focus();
   }
 
@@ -1254,9 +1259,7 @@ function showBehavioralModal(text, el, warnings, warningTypes) {
   document.getElementById("sv-edit-btn").addEventListener("click", closeToEdit);
 
   document.getElementById("sv-send-btn").addEventListener("click", () => {
-    modal.remove();
-    document.removeEventListener("keydown", onEscape, true);
-    unfreezeField();
+    teardownModal();
     if (el) {
       el.dataset.shieldvaultBypass = "true";
       setTimeout(() => {

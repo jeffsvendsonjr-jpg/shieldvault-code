@@ -335,10 +335,14 @@
     const expiry =
       typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
     if (data.email) proEmail = data.email;
+    // If the server omits the plan, infer it from the expiry: a renewal date
+    // means monthly, no expiry means lifetime. Keeps the plan line + lifetime
+    // upsell working for older server responses.
+    const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
     chrome.storage.local.set({
       shieldvault_pro: true,
       shieldvault_pro_expiry: expiry,
-      shieldvault_pro_plan: data.plan || '',
+      shieldvault_pro_plan: plan,
       shieldvault_license_key: data.key || '',
       shieldvault_tier: data.tier || 'plus',
       shieldvault_email: data.email || proEmail || '',
@@ -386,20 +390,22 @@
       ['shieldvault_pro_plan', 'shieldvault_pro_expiry'],
       function (result) {
         if (chrome.runtime.lastError) return;
-        const plan = result.shieldvault_pro_plan || '';
         const expiry = result.shieldvault_pro_expiry;
-        if (plan === 'monthly') {
-          const renews =
-            typeof expiry === 'number' && expiry > 0
-              ? ' — renews ' + new Date(expiry).toLocaleDateString([], { month: 'short', day: 'numeric' })
-              : '';
+        const hasExpiry = typeof expiry === 'number' && expiry > 0;
+        // Unknown/absent plan (older stored state) is inferred from the expiry
+        // so the lifetime upsell is only hidden for confirmed lifetime owners.
+        const plan = result.shieldvault_pro_plan || (hasExpiry ? 'monthly' : 'lifetime');
+        if (plan === 'lifetime') {
+          planLine.textContent = 'Lifetime plan';
+          planLine.style.display = '';
+          upgradeBtn.style.display = 'none';
+        } else {
+          const renews = hasExpiry
+            ? ' — renews ' + new Date(expiry).toLocaleDateString([], { month: 'short', day: 'numeric' })
+            : '';
           planLine.textContent = 'Monthly plan' + renews;
           planLine.style.display = '';
           upgradeBtn.style.display = '';
-        } else {
-          planLine.textContent = plan === 'lifetime' ? 'Lifetime plan' : '';
-          planLine.style.display = plan === 'lifetime' ? '' : 'none';
-          upgradeBtn.style.display = 'none';
         }
       }
     );
