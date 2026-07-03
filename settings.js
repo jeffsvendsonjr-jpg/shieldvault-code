@@ -27,11 +27,14 @@
   function loadProStatus() {
     return new Promise(function (resolve) {
       try {
-        chrome.storage.local.get(['shieldvault_pro', 'shieldvault_pro_expiry'], function (result) {
+        chrome.storage.local.get(['shieldvault_pro', 'shieldvault_tier', 'shieldvault_pro_expiry'], function (result) {
           if (chrome.runtime.lastError) return resolve(false);
           const expiry = result.shieldvault_pro_expiry;
           const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
-          resolve(result.shieldvault_pro === true && !expired);
+          // Accept either entitlement key so this page can never disagree
+          // with the content script about Pro status.
+          const entitled = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
+          resolve(entitled && !expired);
         });
       } catch (_) {
         resolve(false);

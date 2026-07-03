@@ -247,6 +247,10 @@ async function ensureShieldVaultDefaults() {
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
+    // Fresh install starts from a zero badge. (Chrome clears storage.local on
+    // uninstall, so this is defensive rather than load-bearing.)
+    chrome.storage.local.set({ [SHIELDVAULT_BADGE_COUNT_KEY]: 0 }).catch(() => {});
+    chrome.action.setBadgeText({ text: '' }).catch(() => {});
     ensureShieldVaultDefaults().finally(() => {
       chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
     });
