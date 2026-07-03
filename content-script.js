@@ -89,11 +89,28 @@ function isHostPaused(list) {
   );
 }
 
+// Tell the background whether THIS tab's site is paused so it can show a
+// per-tab "OFF" badge on the toolbar icon — a passive heads-up for anyone who
+// paused a site and forgot. Only a boolean travels; the background learns the
+// tab from the message sender, so no tabs permission is needed. Per-tab badges
+// clear on navigation and the fresh content script re-reports, keeping it live.
+function reportPausedBadge() {
+  try {
+    chrome.runtime.sendMessage({
+      type: "SHIELDVAULT_PAUSED_BADGE",
+      paused: SHIELDVAULT_PAUSED,
+    });
+  } catch (_) {
+    // Extension context may be invalidated; the badge is best-effort.
+  }
+}
+
 function refreshPausedState() {
   try {
     chrome.storage.local.get([SHIELDVAULT_PAUSED_DOMAINS_KEY], (result) => {
       if (chrome.runtime.lastError) return;
       SHIELDVAULT_PAUSED = isHostPaused(result[SHIELDVAULT_PAUSED_DOMAINS_KEY]);
+      reportPausedBadge();
     });
   } catch (_) {
     // Storage unavailable; leave detection on.
@@ -110,6 +127,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
     SHIELDVAULT_PAUSED = isHostPaused(changes[SHIELDVAULT_PAUSED_DOMAINS_KEY].newValue);
+    reportPausedBadge();
   }
   // A guard toggled from a catch card (or Settings) applies to every open tab.
   if (changes[SHIELDVAULT_SETTINGS_KEY]) {

@@ -279,6 +279,8 @@ chrome.runtime.onStartup.addListener(() => {
  *     `{ paused: boolean, pausedDomains: string[] }`.
  * - `SHIELDVAULT_TOGGLE_PAUSE` (popup → bg): payload `{ domain }`, flips pause
  *     for that domain, responds `{ ok, domain, paused, pausedDomains }`.
+ * - `SHIELDVAULT_PAUSED_BADGE` (content → bg): payload `{ paused: boolean }`;
+ *     sets/clears the per-tab "OFF" toolbar badge for the sender's tab.
  *
  * The worker also *broadcasts* `SHIELDVAULT_PROOF_STORED` `{ proof }` when a
  * proof is saved, so an open popup can update live.
@@ -329,6 +331,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch(() => sendResponse({ ok: false }));
     return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_PAUSED_BADGE') {
+    // Per-tab paused indicator: a gold "OFF" badge on the toolbar icon for
+    // tabs whose site the user paused, so a forgotten pause is visible without
+    // opening the popup. The tab comes from the message sender (no tabs
+    // permission); per-tab badges auto-clear on navigation and the fresh
+    // content script re-reports. Setting null text restores the global
+    // block-count badge for that tab.
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (typeof tabId === 'number') {
+      const paused = message.paused === true;
+      Promise.resolve()
+        .then(() => chrome.action.setBadgeText({ tabId, text: paused ? 'OFF' : null }))
+        .then(() => chrome.action.setBadgeBackgroundColor({
+          tabId,
+          color: paused ? '#f4b740' : '#4c6fff',
+        }))
+        .catch(() => {});
+    }
+    return false;
   }
 
   if (message.type === 'SHIELDVAULT_OPEN_SETTINGS') {
