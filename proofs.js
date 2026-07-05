@@ -316,8 +316,10 @@
   // expiry in the past counts as lapsed.
   function getProStatus() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(["shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
-        const isPro = result.shieldvault_pro === true;
+      chrome.storage.local.get(["shieldvault_pro", "shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
+        // Accept either entitlement key (both are written together) so the
+        // popup, settings page, and content script always agree on Pro.
+        const isPro = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
         const expiry = result.shieldvault_pro_expiry;
         const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
         resolve(isPro && !expired);

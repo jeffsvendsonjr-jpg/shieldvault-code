@@ -36,13 +36,18 @@ let USER_TIER = "basic";
 // Effective tier honours expiry: a 'plus' tier whose Pro window has lapsed
 // (positive expiry in the past) is treated as basic, even if the popup hasn't
 // re-validated yet. A null/absent expiry means lifetime (never expires).
-function effectiveTier(tier, expiry) {
+function effectiveTier(tier, expiry, proFlag) {
   const expired = typeof expiry === "number" && expiry > 0 && Date.now() > expiry;
-  return tier === "plus" && !expired ? "plus" : "basic";
+  // Entitlement is stored under two keys (shieldvault_tier and the legacy
+  // shieldvault_pro boolean); saveProStatus writes both, but reads accept
+  // EITHER so a partial write or manual edit can never split the settings
+  // page and the detection engine into disagreeing about Pro.
+  const entitled = tier === "plus" || proFlag === true;
+  return entitled && !expired ? "plus" : "basic";
 }
 
-chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
-  USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry);
+chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
+  USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry, result.shieldvault_pro);
 });
 
 const SHIELDVAULT_BYPASS_WINDOW_MS = 45000;
@@ -119,10 +124,10 @@ function refreshPausedState() {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.shieldvault_tier || changes.shieldvault_pro_expiry) {
-    chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
+  if (changes.shieldvault_tier || changes.shieldvault_pro || changes.shieldvault_pro_expiry) {
+    chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
       if (chrome.runtime.lastError) return;
-      USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry);
+      USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry, result.shieldvault_pro);
     });
   }
   if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
@@ -275,8 +280,9 @@ const DETECTORS = [
   // SendGrid
   { name: "SendGrid API Key", pattern: /SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/ },
   
-  // Mailchimp
-  { name: "Mailchimp API Key", pattern: /[A-Za-z0-9]{32}-us[0-9]{1,2}/ },
+  // Mailchimp — keys are 32 HEX chars + datacenter suffix. Hex-only + word
+  // boundaries so arbitrary 32-char identifiers can't collide with "-us1".
+  { name: "Mailchimp API Key", pattern: /\b[0-9a-f]{32}-us[0-9]{1,2}\b/ },
   
   // Heroku — context-bound: a bare UUID matches request IDs, React keys, etc.
   // Require a heroku label nearby to avoid wiping unrelated content.
@@ -428,12 +434,14 @@ function setValue(el, value) {
   if (!el) return;
 
   if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, "value"
-    )?.set || Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype, "value"
-    )?.set;
-    
+    // The native setter must come from the element's OWN prototype — calling
+    // the HTMLInputElement setter on a textarea throws "Illegal invocation"
+    // (which silently broke textarea redaction before this guard).
+    const proto = el.tagName === "TEXTAREA"
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+
     if (nativeInputValueSetter) {
       nativeInputValueSetter.call(el, value);
     } else {
@@ -444,14 +452,31 @@ function setValue(el, value) {
     el.dispatchEvent(new Event("change", { bubbles: true }));
     
   } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
-    el.innerHTML = "";
-    el.textContent = value;
-    
-    el.dispatchEvent(new InputEvent("input", { 
-      bubbles: true, 
-      cancelable: true,
-      inputType: "deleteContentBackward"
-    }));
+    // Framework editors (ProseMirror/Lexical on ChatGPT, Claude, X) keep their
+    // own model; mutating innerHTML behind their back desyncs it and the edit
+    // gets reverted or duplicated. execCommand('insertText') routes through the
+    // browser's editing pipeline, which those editors handle natively.
+    // (Deprecated but universally supported; falls back to direct DOM writes.)
+    let inserted = false;
+    try {
+      el.focus();
+      document.execCommand("selectAll", false, null);
+      inserted = value === ""
+        ? document.execCommand("delete", false, null)
+        : document.execCommand("insertText", false, value);
+    } catch (_) {
+      inserted = false;
+    }
+
+    if (!inserted || getValue(el) !== value) {
+      el.innerHTML = "";
+      el.textContent = value;
+      el.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "deleteContentBackward"
+      }));
+    }
   }
 }
 
@@ -901,6 +926,8 @@ function svGlassStyles(solidBorder) {
 }
 
 function showBlockedOverlay(el, text, detectorNames, options) {
+  // SPA transitions (React remounts) can momentarily leave document.body null.
+  if (!document.body) return;
   const previous = document.getElementById("shieldvault-blocked-overlay");
   if (previous) previous.remove();
 
@@ -1045,6 +1072,7 @@ function showBlockedOverlay(el, text, detectorNames, options) {
 // "don't warn me for this" toggle per category. Shown at most once per category
 // per page load. No matched text is ever shown or stored — categories only.
 function showReviewCard(detectorNames) {
+  if (!document.body) return;
   const toggles = softGuardsForDetectors(detectorNames).filter(
     (g) => !SHIELDVAULT_REVIEW_SHOWN.has(g.key)
   );
@@ -1155,6 +1183,7 @@ function notifyBackground(detectorNames, vector, category) {
 }
 
 function showBehavioralModal(text, el, warnings, warningTypes) {
+  if (!document.body) return;
   // Avoid stacking duplicate modals
   if (document.getElementById("shieldvault-behavioral-modal")) return;
 
@@ -1451,18 +1480,10 @@ function handleDetection(text, el, vector, event) {
 // EVENT HOOKS
 // ================================
 
-// BEFOREINPUT — earliest possible interception
-document.addEventListener(
-  "beforeinput",
-  (e) => {
-    const incoming = typeof e.data === "string" ? e.data : "";
-    if (!incoming) return;
-
-    const el = getActiveEditable();
-    handleDetection(incoming, el, "typed", e);
-  },
-  true
-);
+// NOTE: no beforeinput listener by design. For typed input its e.data is a
+// single character (no detector can match), and for paste it's null — so a
+// beforeinput hook fires on every keystroke and can never detect anything.
+// Typed content is covered by the debounced input fallback + Enter keydown.
 
 // PASTE — clipboard interception
 document.addEventListener(
@@ -1511,7 +1532,14 @@ document.addEventListener(
   true
 );
 
-// INPUT — fallback for anything that slipped through
+// INPUT — fallback for anything that slipped through. Debounced per field:
+// running the full detector set on every keystroke is measurable lag on long
+// documents and mid-range hardware, and detection 300ms after the last
+// keystroke protects exactly as well — nothing can be submitted mid-debounce
+// without hitting the Enter keydown or paste hooks first.
+const SHIELDVAULT_INPUT_TIMERS = new WeakMap();
+const SHIELDVAULT_INPUT_DEBOUNCE_MS = 300;
+
 document.addEventListener(
   "input",
   (e) => {
@@ -1527,12 +1555,16 @@ document.addEventListener(
       return;
     }
 
-    const value = getValue(el);
-    if (!value) return;
-
-    // No event to cancel here — handleDetection redacts secrets and (on Plus)
-    // surfaces the behavioral modal, sharing one code path with the other hooks.
-    handleDetection(value, el, "input-fallback", null);
+    const pending = SHIELDVAULT_INPUT_TIMERS.get(el);
+    if (pending) clearTimeout(pending);
+    SHIELDVAULT_INPUT_TIMERS.set(el, setTimeout(() => {
+      SHIELDVAULT_INPUT_TIMERS.delete(el);
+      const value = getValue(el);
+      if (!value) return;
+      // No event to cancel here — handleDetection redacts secrets and (on Plus)
+      // surfaces the behavioral modal, sharing one code path with the other hooks.
+      handleDetection(value, el, "input-fallback", null);
+    }, SHIELDVAULT_INPUT_DEBOUNCE_MS));
   },
   true
 );
