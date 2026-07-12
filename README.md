@@ -1,88 +1,51 @@
 # ShieldVault
 
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Privacy Policy — ShieldVault</title>
-  <meta name="description" content="ShieldVault collects no personal data. All secret detection happens 100% locally in your browser." />
-  <style>
-    :root { --bg:#0b0d12; --card:#12151d; --border:#232838; --text:#e8eaf0; --muted:#8b91a3; --gold:#d4af37; }
-    * { box-sizing: border-box; }
-    body { margin:0; background:var(--bg); color:var(--text);
-      font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; line-height:1.6; }
-    .wrap { max-width:760px; margin:0 auto; padding:56px 22px 80px; }
-    h1 { font-size:30px; font-weight:800; margin:0 0 4px; }
-    .updated { color:var(--muted); font-size:13px; margin:0 0 32px; }
-    h2 { font-size:19px; font-weight:700; margin:36px 0 10px; color:#fff; }
-    .lede { font-size:16px; color:#cfd3de; background:var(--card); border:1px solid var(--border);
-      border-left:3px solid var(--gold); border-radius:12px; padding:18px 20px; }
-    p { margin:10px 0; color:#c7ccd8; }
-    ul { margin:10px 0; padding-left:22px; }
-    li { margin:7px 0; color:#c7ccd8; }
-    a { color:var(--gold); }
-    strong { color:#fff; }
-    code { background:#0b0d12; border:1px solid var(--border); border-radius:5px; padding:1px 6px; font-size:13px; }
-    .foot { margin-top:40px; padding-top:18px; border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
-  </style>
-</head>
-<body>
-  <main class="wrap">
-    <h1>ShieldVault Privacy Policy</h1>
-    <p class="updated">Last updated: June 27, 2026</p>
+**Catches secrets and regrettable messages before you hit send.**
 
-    <p class="lede"><strong>ShieldVault collects no personal data. Period.</strong> All secret detection and behavioral text analysis happen <strong>100% locally in your browser</strong> using pattern matching. Your secrets, API keys, message content, and browsing activity are <strong>never collected, stored, or transmitted</strong> to us or anyone else.</p>
+ShieldVault is a browser extension with two layers of protection:
 
-    <h2>What we DON'T do</h2>
-    <ul>
-      <li>We don't collect your secrets, API keys, or passwords.</li>
-      <li>We don't read, store, or transmit your message or document content.</li>
-      <li>We don't track your browsing history or the pages you visit.</li>
-      <li>We don't use analytics, advertising, or tracking of any kind.</li>
-      <li>We don't sell, rent, or share any data with third parties.</li>
-    </ul>
+- **Hard Blocks (Secret Detection):** Detects API keys, tokens, credentials, seed phrases, and payment card numbers in what you're about to send, and redacts them in the composer before the message goes anywhere.
+- **Soft Blocks (Regret Prevention):** Optionally flags impulsive behavior — angry rants, passive-aggressive phrasing, all-caps shouting, late-night sends — and gives you a moment to reconsider.
 
-    <h2>What stays on your device</h2>
-    <ul>
-      <li><strong>Protection history</strong> (which sites blocked a secret, timestamps, and the type of secret detected — e.g. "OpenAI API key") is stored <strong>locally</strong> via Chrome's storage API, on your device only. It never leaves your browser, and you can clear it anytime from the popup.</li>
-      <li><strong>Pro status</strong> (your license state) is stored locally via Chrome's storage API.</li>
-    </ul>
+It runs on major AI chat platforms (ChatGPT, Claude, Gemini, Perplexity, Copilot, and others), developer surfaces (GitHub, GitLab, Replit, StackBlitz), workplace tools (Slack, Discord, Linear, Jira, Notion, Google Docs), social media (LinkedIn, Reddit, X), and email (Gmail, Outlook). The exact site list is in <a>`manifest.json`</a> — if it's not in `content_scripts.matches`, ShieldVault doesn't run there.
 
-    <h2>The only time ShieldVault contacts our server</h2>
-    <p>ShieldVault talks to our server (<code>shieldvault.site</code>) <strong>only when you choose to</strong>:</p>
-    <ul>
-      <li><strong>Purchase ShieldVault Pro</strong> — checkout is handled by <strong>Stripe</strong>. Payment and email are processed by Stripe under their <a href="https://stripe.com/privacy">privacy policy</a>; we never see or store your card details.</li>
-      <li><strong>Activate a license key</strong> — your license key is sent to our server solely to verify your purchase and unlock Pro features.</li>
-    </ul>
-    <p>These are the only network requests the extension makes, and they happen only as a direct result of your action. No browsing data, message content, or analytics is ever included.</p>
+## Privacy — the precise version
 
-    <h2>Permissions, briefly</h2>
-    <ul>
-      <li><strong>Storage</strong> — to save your local protection history and Pro status on-device.</li>
-      <li><strong>activeTab / tabs</strong> — to know which AI/coding/communication site you're on so detection runs only where relevant.</li>
-      <li><strong>Host access (the listed sites)</strong> — to run the local detection content script on supported pages (e.g. ChatGPT, Claude, GitHub). Nothing from these pages is transmitted.</li>
-      <li><strong>shieldvault.site</strong> — for license activation and checkout only (see above).</li>
-    </ul>
+The honest claim isn't "we never talk to a server." It's this: **the content you type never leaves your device, and you can verify that in this repository.**
 
-    <h2>Data retention &amp; deletion</h2>
-    <p>Because we don't collect personal data, there's nothing on our servers to delete beyond your license record (tied to your purchase). Local data lives on your device and is removed when you clear it or uninstall the extension.</p>
+**What never leaves your device:**
 
-    <h2>Children</h2>
-    <p>ShieldVault is not directed to children under 13 and does not knowingly collect data from them.</p>
+- Your messages, prompts, and anything you type. All detection — secret scanning and behavioral analysis — runs locally in <a>`content-script.js`</a> using pattern matching. No text is sent to any server or external AI for analysis.
+- The secrets themselves. When ShieldVault redacts something, the secret is never stored — not locally, not remotely. Only a record of the *event* is kept ("AWS key blocked on chatgpt.com"), never its content.
 
-    <h2>Changes</h2>
-    <p>We'll update this page and the "Last updated" date if our practices change.</p>
+**What is stored locally on your device:**
 
-    <h2>Contact</h2>
-    <p>Questions? Email <a href="mailto:jeffsvendsonjr@gmail.com">jeffsvendsonjr@gmail.com</a>.</p>
+- Your settings (which guards are on or off).
+- A capped log of block events — the detector type and the site, never the content. This lives in Chrome's local extension storage so your protection history survives a browser restart. You can clear it anytime from the extension.
+- If you purchase Pro: your license key and display metadata (plan, expiry).
 
-    <p class="foot">© 2026 ShieldVault — detection without possession. Secrets never leave your device.</p>
-  </main>
-</body>
-</html>
+**The one network call this extension makes, and exactly what it contains:**
 
+If (and only if) you activate a Pro license, the extension sends your **license key** — nothing else — to `https://shieldvault.site` to confirm the license is valid. That's the only endpoint this extension can talk to (see `host_permissions` in the manifest), and the only data in the request is the key itself. Free-tier users with no license key stored trigger no network requests at all.
 
-06/29/26
-20% more
+**What we don't do:** no analytics, no tracking, no accounts, no telemetry, no reading your browsing, no transmitting message content anywhere, ever.
 
+Don't take this README's word for any of it — take the code's. The functions that touch the network are easy to find: search the repo for `fetch(`.
+
+## Verify that this code is what's actually running
+
+ShieldVault ships unminified with no build step, so the code in this repository is the code in the extension — and you can prove it:
+
+1. Install ShieldVault from the <a href="https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao">Chrome Web Store</a>.
+2. Find the installed extension folder (visit `chrome://version`, note your Profile Path, then look in `Extensions/johfmefhjjmejjlopnndkbhmgdidkfao/<version>/`).
+3. Diff those files against the release tag in this repo matching your installed version. (The repo additionally contains `README.md` and `license`, which are not packaged in the extension — everything else must match.)
+
+If they don't match, open an issue — that would be a serious problem and we want to know immediately.
+
+## Found a false positive or a site where it breaks?
+
+That's the most valuable thing you can give this project. <a href="https://github.com/jeffsvendsonjr-jpg/shieldvault-code/issues">Open an issue</a> with the site and a *fake* example of the text that triggered (never paste a real secret, even a revoked one). False-positive reports have directly driven past releases.
+
+## License
+
+<a>Business Source License 1.1</a> — free for personal, educational, research, and evaluation use. Commercial production use requires a license: jeffsvendsonjr@gmail.com. Converts to MIT on 2030-05-11.
