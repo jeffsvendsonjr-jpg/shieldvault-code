@@ -1,4 +1,4 @@
-# ShieldVault
+**[→ Install ShieldVault from the Chrome Web Store](https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao)**# ShieldVault
 
 **Catches secrets and regrettable messages before you hit send.**
 
