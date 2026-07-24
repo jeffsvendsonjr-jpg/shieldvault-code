@@ -20,6 +20,8 @@ const anthologyDir = path.resolve(
   process.argv[2] || path.join(repoRoot, "../shieldvault-anthology/anthology/cases")
 );
 const contentScriptPath = path.join(repoRoot, "content-script.js");
+const reportDir = path.join(repoRoot, "tests", "anthology", "artifacts");
+const reportPath = path.join(reportDir, "production-anthology-report.json");
 
 function fatal(message) {
   console.error(`ERROR: ${message}`);
@@ -106,11 +108,13 @@ for (const filename of files) {
     rows.push({
       id: caseData.id,
       domain: caseData.domain,
+      category: caseData.category,
       expected: caseData.expected,
       observed,
       pass,
       releaseBlocker: caseData.release_blocker === true,
       permitted: [...permitted],
+      mustNot: [...prohibited],
     });
   }
 }
@@ -133,13 +137,32 @@ for (const row of rows) {
 const secretRows = rows.filter((row) => row.domain === "secret");
 const behaviorRows = rows.filter((row) => row.domain === "behavior");
 const passed = rows.length - failures;
+const summary = {
+  generatedAt: new Date().toISOString(),
+  cases: rows.length,
+  passed,
+  failed: failures,
+  releaseBlockerFailures: blockerFailures,
+  secrets: {
+    passed: secretRows.filter((row) => row.pass).length,
+    total: secretRows.length,
+  },
+  behavior: {
+    passed: behaviorRows.filter((row) => row.pass).length,
+    total: behaviorRows.length,
+  },
+};
+
+fs.mkdirSync(reportDir, { recursive: true });
+fs.writeFileSync(reportPath, `${JSON.stringify({ summary, results: rows }, null, 2)}\n`, "utf8");
 
 console.log("\nShieldVault production detector anthology report");
 console.log(`Cases: ${rows.length}`);
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failures}`);
 console.log(`Release-blocker failures: ${blockerFailures}`);
-console.log(`Secrets: ${secretRows.filter((row) => row.pass).length}/${secretRows.length}`);
-console.log(`Behavior: ${behaviorRows.filter((row) => row.pass).length}/${behaviorRows.length}`);
+console.log(`Secrets: ${summary.secrets.passed}/${summary.secrets.total}`);
+console.log(`Behavior: ${summary.behavior.passed}/${summary.behavior.total}`);
+console.log(`Report: ${reportPath}`);
 
 if (failures > 0) process.exit(1);
