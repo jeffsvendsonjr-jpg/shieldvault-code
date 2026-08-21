@@ -22,19 +22,14 @@
   const savedMsg = document.getElementById('saved-msg');
   let isPro = false;
 
-  // Mirrors effectiveTier in the content script: null/absent expiry = lifetime;
-  // only a positive expiry in the past counts as lapsed.
+  // Ask the service worker for a server-verified entitlement. Editable
+  // chrome.storage values are never accepted as proof of Pro.
   function loadProStatus() {
     return new Promise(function (resolve) {
       try {
-        chrome.storage.local.get(['shieldvault_pro', 'shieldvault_tier', 'shieldvault_pro_expiry'], function (result) {
+        chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_ENTITLEMENT' }, function (response) {
           if (chrome.runtime.lastError) return resolve(false);
-          const expiry = result.shieldvault_pro_expiry;
-          const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
-          // Accept either entitlement key so this page can never disagree
-          // with the content script about Pro status.
-          const entitled = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
-          resolve(entitled && !expired);
+          resolve(Boolean(response && response.isPro === true));
         });
       } catch (_) {
         resolve(false);

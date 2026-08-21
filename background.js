@@ -24,6 +24,185 @@ const SHIELDVAULT_MAX_PROOFS = 100;
 // hard-block proofs that make up the real audit trail.
 const SHIELDVAULT_MAX_REVIEW_PROOFS = 25;
 
+
+// ── Pro entitlement authority ────────────────────────────────────────────────
+// Local storage is only a place to keep the user's license key and display
+// metadata. It is never accepted as proof of payment. Every Pro decision is
+// made here after the backend validates the stored key.
+const SHIELDVAULT_API_BASE = 'https://shieldvault.site';
+// A successful server check is reused for this long before re-fetching, so
+// per-frame content-script boots (all_frames on 30+ hosts) don't stampede the
+// backend with one POST each.
+const SHIELDVAULT_VERIFY_TTL_MS = 15 * 60 * 1000; // 15 minutes
+// Offline grace is anchored in chrome.storage.session: memory-backed (never
+// on disk), alive for the whole browser session, and — unlike storage.local —
+// not writable from content scripts or page devtools, so no storage edit can
+// create or extend entitlement. It survives MV3 service-worker suspensions,
+// which occur after ~30s idle; a plain in-memory variable would lose the
+// grace anchor dozens of times an hour. Cost: a full browser restart while
+// offline drops Pro until the backend is reachable again. Forging this
+// anchor requires the extension's own service-worker console, which is the
+// same access level as patching the bundle itself.
+const SHIELDVAULT_OFFLINE_GRACE_MS = 72 * 60 * 60 * 1000; // 72 hours
+const SHIELDVAULT_SESSION_CACHE_KEY = 'shieldvault_verified_session';
+let shieldVaultProCheckPromise = null;
+
+async function readVerifiedSessionCache() {
+  try {
+    const stored = await chrome.storage.session.get([SHIELDVAULT_SESSION_CACHE_KEY]);
+    const cache = stored[SHIELDVAULT_SESSION_CACHE_KEY];
+    if (!cache || cache.isPro !== true || typeof cache.verifiedAt !== 'number' || cache.verifiedAt <= 0) {
+      return { isPro: false, reason: 'unverified' };
+    }
+    const expiry = typeof cache.expiresAt === 'number' && cache.expiresAt > 0 ? cache.expiresAt : null;
+    if (expiry !== null && Date.now() > expiry) {
+      return { isPro: false, reason: 'expired' };
+    }
+    return { isPro: true, plan: cache.plan || null, expiresAt: expiry, verifiedAt: cache.verifiedAt };
+  } catch (_) {
+    return { isPro: false, reason: 'unverified' };
+  }
+}
+
+async function writeVerifiedSessionCache(cache) {
+  try {
+    await chrome.storage.session.set({ [SHIELDVAULT_SESSION_CACHE_KEY]: cache });
+  } catch (_) {
+    // Session storage unavailable — grace simply won't extend past this
+    // worker's lifetime. Fail toward less entitlement, never more.
+  }
+}
+
+async function clearVerifiedSessionCache() {
+  try {
+    await chrome.storage.session.remove(SHIELDVAULT_SESSION_CACHE_KEY);
+  } catch (_) {}
+}
+
+async function clearLocalEntitlementMetadata({ keepLicenseKey = true } = {}) {
+  const keys = [
+    'shieldvault_pro',
+    'shieldvault_pro_expiry',
+    'shieldvault_pro_plan',
+    'shieldvault_tier',
+    'shieldvault_email',
+    'shieldvault_last_verified_at',
+  ];
+  if (!keepLicenseKey) keys.push('shieldvault_license_key');
+  await chrome.storage.local.remove(keys);
+}
+
+async function verifyStoredLicense({ force = false } = {}) {
+  if (shieldVaultProCheckPromise && !force) return shieldVaultProCheckPromise;
+
+  shieldVaultProCheckPromise = (async () => {
+    try {
+      const stored = await chrome.storage.local.get(['shieldvault_license_key']);
+      const key = typeof stored.shieldvault_license_key === 'string'
+        ? stored.shieldvault_license_key.trim()
+        : '';
+
+      if (!key) {
+        await clearVerifiedSessionCache();
+        await clearLocalEntitlementMetadata({ keepLicenseKey: false });
+        return { isPro: false, reason: 'no_license' };
+      }
+
+      const cached = await readVerifiedSessionCache();
+      const sinceLastGoodCheck = cached.isPro
+        ? Date.now() - cached.verifiedAt
+        : Infinity;
+
+      // Reuse only a session-scoped state produced by a successful backend
+      // check. No chrome.storage.local value can create or extend this cache,
+      // and it survives MV3 worker suspensions within the browser session.
+      if (!force && cached.isPro && sinceLastGoodCheck < SHIELDVAULT_VERIFY_TTL_MS) {
+        return { ...cached, reason: 'cached' };
+      }
+
+      const graceDecision = () => {
+        const withinGrace =
+          cached.isPro &&
+          Date.now() - cached.verifiedAt < SHIELDVAULT_OFFLINE_GRACE_MS;
+
+        return withinGrace
+          ? { ...cached, reason: 'grace' }
+          : { isPro: false, reason: 'verification_unavailable' };
+      };
+
+      let response;
+      try {
+        response = await fetch(SHIELDVAULT_API_BASE + '/api/license/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+      } catch (_) {
+        return graceDecision();
+      }
+
+      if (!response.ok) return graceDecision();
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (_) {
+        return graceDecision();
+      }
+
+      const expiry = typeof data.expiresAt === 'number' && data.expiresAt > 0
+        ? data.expiresAt
+        : null;
+      const expired = expiry !== null && Date.now() > expiry;
+
+      if (!data.valid || expired) {
+        await clearVerifiedSessionCache();
+        await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+        return { isPro: false, reason: expired ? 'expired' : 'invalid' };
+      }
+
+      const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
+      const verifiedAt = Date.now();
+      await writeVerifiedSessionCache({
+        isPro: true,
+        plan,
+        expiresAt: expiry,
+        verifiedAt,
+      });
+
+      // These values are display metadata only. They are never read as proof.
+      await chrome.storage.local.set({
+        shieldvault_pro: true,
+        shieldvault_tier: data.tier || 'plus',
+        shieldvault_pro_expiry: expiry,
+        shieldvault_pro_plan: plan,
+        shieldvault_email: data.email || '',
+      });
+
+      return { isPro: true, plan, expiresAt: expiry, verifiedAt };
+    } catch (error) {
+      console.warn('[ShieldVault] Pro verification failed:', error);
+      return { isPro: false, reason: 'verification_unavailable' };
+    } finally {
+      shieldVaultProCheckPromise = null;
+    }
+  })();
+
+  return shieldVaultProCheckPromise;
+}
+
+function broadcastEntitlement(state) {
+  try {
+    // sendMessage returns a Promise in MV3; it REJECTS asynchronously when no
+    // extension page is open to receive (i.e., every browser startup). A
+    // synchronous try/catch cannot catch that — the .catch is the real guard.
+    chrome.runtime.sendMessage({ type: 'SHIELDVAULT_ENTITLEMENT_CHANGED', ...state })
+      .catch(() => {});
+  } catch (_) {
+    // No extension page may be listening.
+  }
+}
+
 function safeText(value, maxLength) {
   return String(value || '').slice(0, maxLength);
 }
@@ -222,7 +401,8 @@ async function storeProof(message, sender) {
       // Badge is best-effort.
     }
     try {
-      chrome.runtime.sendMessage({ type: 'SHIELDVAULT_PROOF_STORED', proof });
+      chrome.runtime.sendMessage({ type: 'SHIELDVAULT_PROOF_STORED', proof })
+        .catch(() => {});
     } catch (_) {
       // Popup may be closed.
     }
@@ -262,6 +442,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   restoreBadge();
+  verifyStoredLicense({ force: true }).then(broadcastEntitlement);
 });
 
 /**
@@ -356,6 +537,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(() => {});
     }
     return false;
+  }
+
+  if (message.type === 'SHIELDVAULT_GET_ENTITLEMENT') {
+    verifyStoredLicense({ force: message.force === true })
+      .then((state) => sendResponse(state))
+      .catch(() => sendResponse({ isPro: false, reason: 'verification_failed' }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_REFRESH_ENTITLEMENT') {
+    verifyStoredLicense({ force: true })
+      .then((state) => {
+        broadcastEntitlement(state);
+        sendResponse(state);
+      })
+      .catch(() => sendResponse({ isPro: false, reason: 'verification_failed' }));
+    return true;
   }
 
   if (message.type === 'SHIELDVAULT_OPEN_SETTINGS') {
