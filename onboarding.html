@@ -5,98 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ShieldVault Setup</title>
   <style>
-    :root {
-      --bg: #0b0d12;
-      --panel: #131722;
-      --text: #e6e8ee;
-      --muted: #8a8f9c;
-      --accent: #4c6fff;
-      --border: #1f2433;
-      --good: #34d399;
-      --warning: #fbbf24;
-    }
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: var(--bg);
-      color: var(--text);
-      padding: 20px;
-    }
-    .card {
-      width: min(720px, 100%);
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 28px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.25);
-    }
-    .step-label {
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 10px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    h1 { font-size: 24px; margin: 0 0 12px; }
-    p { margin: 0 0 12px; color: var(--muted); line-height: 1.5; }
-    .trust { color: var(--good); font-size: 14px; margin-top: 10px; }
-    .section {
-      margin-top: 16px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
-      background: rgba(11, 13, 18, 0.45);
-    }
-    .section h2 {
-      font-size: 14px;
-      margin: 0 0 4px;
-    }
-    .hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-    .row:last-child { border-bottom: 0; }
-    .row span { font-size: 13px; }
-    .toggle { position: relative; width: 38px; height: 20px; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; inset: 0; border-radius: 999px; background: #334155; transition: .2s; }
-    .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .2s; }
-    .toggle input:checked + .slider { background: var(--good); }
-    .toggle input:checked + .slider::before { transform: translateX(18px); }
-    .sample {
-      margin: 14px 0;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px dashed rgba(76, 111, 255, 0.45);
-      background: rgba(76, 111, 255, 0.08);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 13px;
-      word-break: break-all;
-    }
-    .demo-result {
-      display: none;
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid rgba(251, 191, 36, 0.45);
-      background: rgba(251, 191, 36, 0.12);
-      color: #fde68a;
-      font-size: 13px;
-    }
-    .actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
-    button {
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text);
-      border-radius: 8px;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    .hidden { display: none; }
+    :root { --bg:#0b0d12; --panel:#131722; --text:#e6e8ee; --muted:#8a8f9c; --accent:#4c6fff; --border:#1f2433; --good:#34d399; --warning:#fbbf24; }
+    * { box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text); padding:20px; }
+    .card { width:min(720px,100%); background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:28px; box-shadow:0 20px 40px rgba(0,0,0,.25); }
+    .step-label { color:var(--muted); font-size:12px; margin-bottom:10px; letter-spacing:.04em; text-transform:uppercase; }
+    h1 { font-size:24px; margin:0 0 12px; }
+    p { margin:0 0 12px; color:var(--muted); line-height:1.5; }
+    .trust { color:var(--good); font-size:14px; margin-top:10px; }
+    .section { margin-top:16px; border:1px solid var(--border); border-radius:10px; padding:14px; background:rgba(11,13,18,.45); }
+    .section h2 { font-size:14px; margin:0 0 4px; }
+    .hint { font-size:12px; color:var(--muted); margin-bottom:10px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.04); }
+    .row:last-child { border-bottom:0; }
+    .row span { font-size:13px; }
+    .toggle { position:relative; width:38px; height:20px; }
+    .toggle input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; border-radius:999px; background:#334155; transition:.2s; }
+    .slider::before { content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; border-radius:50%; background:#fff; transition:.2s; }
+    .toggle input:checked + .slider { background:var(--good); }
+    .toggle input:checked + .slider::before { transform:translateX(18px); }
+    .sound-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    select { background:#0b0d12; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-size:12px; }
+    .sample { margin:14px 0; padding:10px; border-radius:8px; border:1px dashed rgba(76,111,255,.45); background:rgba(76,111,255,.08); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; word-break:break-all; }
+    .demo-result { display:none; margin-top:10px; padding:10px; border-radius:8px; border:1px solid rgba(251,191,36,.45); background:rgba(251,191,36,.12); color:#fde68a; font-size:13px; }
+    .actions { display:flex; justify-content:space-between; gap:10px; margin-top:22px; }
+    button { border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:10px 14px; cursor:pointer; font-size:13px; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
@@ -124,6 +61,7 @@
         <h2>Catch sound</h2>
         <p class="hint">Optional. Hear a short alert only when ShieldVault actually blocks sensitive content — useful if you type while looking at your hands or another screen.</p>
         <div class="row"><span>Play catch sound on hard blocks</span><label class="toggle"><input type="checkbox" id="soundOnBlock"><span class="slider"></span></label></div>
+        <div class="row"><span>Sound</span><div class="sound-controls"><select id="catchSoundChoice" aria-label="Catch sound"><option value="standard">Standard</option><option value="alert">Alert</option><option value="fog-horn">Fog horn</option></select><button id="previewCatchSound" type="button">▶ Hear sample</button></div></div>
       </div>
       <div class="section">
         <h2>Optional Reputation Guard <span style="font-size:9px;font-weight:700;color:#000;background:#f4b740;border-radius:4px;padding:1px 5px;vertical-align:2px;letter-spacing:.04em">PRO</span></h2>
@@ -155,6 +93,7 @@
     </div>
   </main>
 
+  <script src="catch-audio.js"></script>
   <script src="onboarding.js"></script>
 </body>
 </html>
