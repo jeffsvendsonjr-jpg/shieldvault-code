@@ -13,6 +13,7 @@
     lateNightPostAlert: false,
     emotionalPostWarning: false,
     soundOnBlock: false,
+    catchSoundChoice: 'standard',
     emailReviewGuard: false,
     phoneReviewGuard: false,
   };
@@ -25,6 +26,8 @@
   const demoResult = document.getElementById('demo-result');
   const openSettingsBtn = document.getElementById('open-settings');
   const doneBtn = document.getElementById('done');
+  const soundChoice = document.getElementById('catchSoundChoice');
+  const previewSound = document.getElementById('previewCatchSound');
   let step = 1;
   let onboardingSaved = false;
 
@@ -41,6 +44,7 @@
       clientDataGuard: document.getElementById('clientDataGuard').checked,
       largePasteGuard: document.getElementById('largePasteGuard').checked,
       soundOnBlock: document.getElementById('soundOnBlock').checked,
+      catchSoundChoice: soundChoice.value,
       lateNightPostAlert,
       emotionalPostWarning,
       reputationGuard: lateNightPostAlert || emotionalPostWarning,
@@ -70,6 +74,10 @@
 
   runDemoBtn.addEventListener('click', function () {
     demoResult.style.display = 'block';
+  });
+
+  previewSound.addEventListener('click', function () {
+    if (window.ShieldVaultCatchAudio) window.ShieldVaultCatchAudio.play(soundChoice.value);
   });
 
   backBtn.addEventListener('click', function () {
