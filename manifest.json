@@ -71,7 +71,8 @@
       ],
       "js": [
         "content-script.js",
-        "catch-guidance.js"
+        "catch-guidance.js",
+        "catch-sound.js"
       ],
       "run_at": "document_idle",
       "all_frames": true
