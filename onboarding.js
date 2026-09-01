@@ -13,8 +13,8 @@
     lateNightPostAlert: false,
     emotionalPostWarning: false,
     soundOnBlock: false,
-    emailReviewGuard: true,
-    phoneReviewGuard: true,
+    emailReviewGuard: false,
+    phoneReviewGuard: false,
   };
 
   const sections = Array.from(document.querySelectorAll('section[data-step]'));
