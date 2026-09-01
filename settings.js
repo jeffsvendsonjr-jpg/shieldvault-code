@@ -14,8 +14,8 @@
     lateNightPostAlert: false,
     emotionalPostWarning: false,
     soundOnBlock: false,
-    emailReviewGuard: true,
-    phoneReviewGuard: true,
+    emailReviewGuard: false,
+    phoneReviewGuard: false,
   };
 
   const ids = Object.keys(DEFAULTS);
