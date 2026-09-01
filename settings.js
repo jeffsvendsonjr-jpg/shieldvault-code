@@ -42,8 +42,8 @@
     });
   }
 
-  // Non-Pro users can still flip Pro toggles (they persist and activate on
-  // upgrade), but we tell them plainly instead of letting the switch look dead.
+  // Reputation Guard remains Pro-gated. Catch sound is a core safety option
+  // and is deliberately excluded from any entitlement messaging here.
   function refreshProUI(state) {
     const upsell = document.getElementById('pro-upsell');
     if (upsell) upsell.style.display = isPro ? 'none' : '';
@@ -52,8 +52,6 @@
       const wantsReputation = state.reputationGuard || state.lateNightPostAlert || state.emotionalPostWarning;
       repNote.classList.toggle('show', !isPro && wantsReputation);
     }
-    const soundNote = document.getElementById('sound-pro-note');
-    if (soundNote) soundNote.classList.toggle('show', !isPro && state.soundOnBlock);
   }
 
   function merged(raw) {
