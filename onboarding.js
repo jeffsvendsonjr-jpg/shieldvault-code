@@ -40,6 +40,7 @@
       privateInfoGuard: document.getElementById('privateInfoGuard').checked,
       clientDataGuard: document.getElementById('clientDataGuard').checked,
       largePasteGuard: document.getElementById('largePasteGuard').checked,
+      soundOnBlock: document.getElementById('soundOnBlock').checked,
       lateNightPostAlert,
       emotionalPostWarning,
       reputationGuard: lateNightPostAlert || emotionalPostWarning,
