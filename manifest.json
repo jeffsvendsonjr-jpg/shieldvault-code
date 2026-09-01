@@ -72,6 +72,7 @@
       "js": [
         "content-script.js",
         "catch-guidance.js",
+        "catch-audio.js",
         "catch-sound.js"
       ],
       "run_at": "document_idle",
