@@ -89,10 +89,9 @@
     actions.appendChild(turnOff);
     card.appendChild(actions);
 
+    // Security review notices persist until the user explicitly acknowledges
+    // them or disables screenshot review. Do not silently auto-dismiss.
     document.body.appendChild(card);
-    setTimeout(() => {
-      if (document.body.contains(card)) card.remove();
-    }, 12000);
   }
 
   // Normalize newly introduced defaults without overwriting an explicit user choice.
