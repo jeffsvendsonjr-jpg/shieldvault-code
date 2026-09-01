@@ -4,6 +4,7 @@
   if (typeof showBlockedOverlay !== "function" || typeof playBlockSound !== "function") return;
 
   const originalShowBlockedOverlay = showBlockedOverlay;
+  const originalLegacyPlayBlockSound = playBlockSound;
   let lastPlayedAt = 0;
 
   function playSelectedCatchSound() {
@@ -22,7 +23,7 @@
 
     // Defensive fallback: preserve the existing local chime if the shared audio
     // helper ever fails to load.
-    try { playBlockSound(); } catch (_) {}
+    try { originalLegacyPlayBlockSound(); } catch (_) {}
   }
 
   // Legacy Plus code still calls playBlockSound() after showBlockedOverlay().
