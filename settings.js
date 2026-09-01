@@ -10,6 +10,7 @@
     privateInfoGuard: true,
     clientDataGuard: true,
     largePasteGuard: true,
+    screenshotReviewGuard: true,
     reputationGuard: false,
     lateNightPostAlert: false,
     emotionalPostWarning: false,
@@ -110,7 +111,9 @@
     refreshProUI(state);
 
     ids.forEach(function (id) {
-      document.getElementById(id).addEventListener('change', async function () {
+      const element = document.getElementById(id);
+      if (!element) return;
+      element.addEventListener('change', async function () {
         if (id === 'reputationGuard' && !document.getElementById('reputationGuard').checked) {
           document.getElementById('lateNightPostAlert').checked = false;
           document.getElementById('emotionalPostWarning').checked = false;
