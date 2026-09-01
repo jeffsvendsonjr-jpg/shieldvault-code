@@ -14,16 +14,17 @@
     lateNightPostAlert: false,
     emotionalPostWarning: false,
     soundOnBlock: false,
+    catchSoundChoice: 'standard',
     emailReviewGuard: false,
     phoneReviewGuard: false,
   };
 
-  const ids = Object.keys(DEFAULTS);
+  const ids = Object.keys(DEFAULTS).filter((id) => typeof DEFAULTS[id] === 'boolean');
   const savedMsg = document.getElementById('saved-msg');
+  const soundChoice = document.getElementById('catchSoundChoice');
+  const previewSound = document.getElementById('previewCatchSound');
   let isPro = false;
 
-  // Mirrors effectiveTier in the content script: null/absent expiry = lifetime;
-  // only a positive expiry in the past counts as lapsed.
   function loadProStatus() {
     return new Promise(function (resolve) {
       try {
@@ -31,8 +32,6 @@
           if (chrome.runtime.lastError) return resolve(false);
           const expiry = result.shieldvault_pro_expiry;
           const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
-          // Accept either entitlement key so this page can never disagree
-          // with the content script about Pro status.
           const entitled = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
           resolve(entitled && !expired);
         });
@@ -42,8 +41,6 @@
     });
   }
 
-  // Reputation Guard remains Pro-gated. Catch sound is a core safety option
-  // and is deliberately excluded from any entitlement messaging here.
   function refreshProUI(state) {
     const upsell = document.getElementById('pro-upsell');
     if (upsell) upsell.style.display = isPro ? 'none' : '';
@@ -78,6 +75,9 @@
       const el = document.getElementById(id);
       if (el) el.checked = Boolean(state[id]);
     });
+    soundChoice.value = window.ShieldVaultCatchAudio
+      ? window.ShieldVaultCatchAudio.normalize(state.catchSoundChoice)
+      : 'standard';
 
     return state;
   }
@@ -87,6 +87,7 @@
     ids.forEach(function (id) {
       state[id] = Boolean(document.getElementById(id).checked);
     });
+    state.catchSoundChoice = soundChoice.value;
 
     if (!state.reputationGuard) {
       state.lateNightPostAlert = false;
@@ -119,10 +120,21 @@
         await save(updated);
       });
     });
+
+    soundChoice.addEventListener('change', async function () {
+      const updated = collectState();
+      refreshProUI(updated);
+      await save(updated);
+    });
+
+    previewSound.addEventListener('click', function () {
+      if (window.ShieldVaultCatchAudio) window.ShieldVaultCatchAudio.play(soundChoice.value);
+    });
   }).catch(function () {
     ids.forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.checked = Boolean(DEFAULTS[id]);
     });
+    soundChoice.value = 'standard';
   });
 })();
