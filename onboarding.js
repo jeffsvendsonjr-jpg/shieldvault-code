@@ -9,7 +9,7 @@
     privateInfoGuard: true,
     clientDataGuard: true,
     largePasteGuard: true,
-    screenshotReviewGuard: true,
+    screenshotReviewGuard: false,
     reputationGuard: false,
     lateNightPostAlert: false,
     emotionalPostWarning: false,
@@ -29,8 +29,12 @@
   const doneBtn = document.getElementById('done');
   const customizeBtn = document.getElementById('customizeProtection');
   const customizePanel = document.getElementById('customizePanel');
+  const soundOnBlock = document.getElementById('soundOnBlock');
+  const soundChoice = document.getElementById('catchSoundChoice');
+  const previewSound = document.getElementById('previewCatchSound');
   let step = 1;
   let onboardingSaved = false;
+  let savedSettings = {};
 
   function checkedOrDefault(id, fallback) {
     const element = document.getElementById(id);
@@ -40,6 +44,7 @@
   function currentSettingsFromUI() {
     return {
       ...DEFAULT_SETTINGS,
+      ...savedSettings,
       secretGuard: checkedOrDefault('secretGuard', true),
       tokenGuard: true,
       passwordGuard: checkedOrDefault('passwordGuard', true),
@@ -47,16 +52,41 @@
       privateInfoGuard: checkedOrDefault('privateInfoGuard', true),
       clientDataGuard: checkedOrDefault('clientDataGuard', true),
       largePasteGuard: checkedOrDefault('largePasteGuard', true),
-      screenshotReviewGuard: checkedOrDefault('screenshotReviewGuard', true),
+      screenshotReviewGuard: checkedOrDefault('screenshotReviewGuard', false),
+      soundOnBlock: checkedOrDefault('soundOnBlock', false),
+      catchSoundChoice: window.ShieldVaultCatchAudio
+        ? window.ShieldVaultCatchAudio.normalize(soundChoice.value)
+        : soundChoice.value || 'standard',
     };
   }
 
+  async function loadSavedSettings() {
+    try {
+      const result = await chrome.storage.local.get(['shieldvaultSettings']);
+      savedSettings = result && result.shieldvaultSettings ? result.shieldvaultSettings : {};
+      const state = { ...DEFAULT_SETTINGS, ...savedSettings };
+      ['secretGuard', 'passwordGuard', 'privateInfoGuard', 'clientDataGuard', 'largePasteGuard', 'screenshotReviewGuard', 'soundOnBlock']
+        .forEach(function (id) {
+          const element = document.getElementById(id);
+          if (element) element.checked = Boolean(state[id]);
+        });
+      soundChoice.value = window.ShieldVaultCatchAudio
+        ? window.ShieldVaultCatchAudio.normalize(state.catchSoundChoice)
+        : state.catchSoundChoice || 'standard';
+    } catch (_) {
+      // Keep the safe defaults already represented by the onboarding controls.
+    }
+  }
+
   async function saveOnboardingComplete() {
+    await settingsReady;
+    const settings = currentSettingsFromUI();
     const payload = {
       onboardingComplete: true,
-      shieldvaultSettings: currentSettingsFromUI(),
+      shieldvaultSettings: settings,
     };
     await chrome.storage.local.set(payload);
+    savedSettings = settings;
   }
 
   function render() {
@@ -81,6 +111,10 @@
     customizePanel.classList.toggle('hidden', !willShow);
     customizeBtn.setAttribute('aria-expanded', String(willShow));
     customizeBtn.textContent = willShow ? 'Hide customization' : 'Customize protection';
+  });
+
+  previewSound.addEventListener('click', function () {
+    if (window.ShieldVaultCatchAudio) window.ShieldVaultCatchAudio.play(soundChoice.value);
   });
 
   backBtn.addEventListener('click', function () {
@@ -109,5 +143,6 @@
     window.close();
   });
 
+  const settingsReady = loadSavedSettings();
   render();
 })();

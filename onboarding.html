@@ -103,6 +103,12 @@
     }
     .actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
     .inline-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .sound-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sound-controls select, .sample-btn {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 9px; font-size: 12px;
+    }
+    .sample-btn { cursor: pointer; }
     button {
       border: 1px solid var(--border);
       background: transparent;
@@ -138,7 +144,6 @@
           <li>Passwords and recovery phrases</li>
           <li>Private and client information</li>
           <li>Large paste review</li>
-          <li>Screenshot review</li>
         </ul>
         <div class="inline-actions">
           <button id="customizeProtection" class="linkish" type="button" aria-expanded="false" aria-controls="customizePanel">Customize protection</button>
@@ -153,7 +158,19 @@
         <div class="row"><span>Private personal info</span><label class="toggle"><input type="checkbox" id="privateInfoGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Client/customer data</span><label class="toggle"><input type="checkbox" id="clientDataGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Large paste review</span><label class="toggle"><input type="checkbox" id="largePasteGuard" checked><span class="slider"></span></label></div>
-        <div class="row"><span>Screenshot review</span><label class="toggle"><input type="checkbox" id="screenshotReviewGuard" checked><span class="slider"></span></label></div>
+        <div class="row"><span id="screenshot-review-label">Screenshot review</span><label class="toggle"><input type="checkbox" id="screenshotReviewGuard" aria-labelledby="screenshot-review-label"><span class="slider"></span></label></div>
+        <div class="row"><span id="sound-on-block-label">Play catch sound on hard blocks</span><label class="toggle"><input type="checkbox" id="soundOnBlock" aria-labelledby="sound-on-block-label"><span class="slider"></span></label></div>
+        <div class="row">
+          <span>Catch sound</span>
+          <div class="sound-controls">
+            <select id="catchSoundChoice" aria-label="Catch sound">
+              <option value="standard">Standard</option>
+              <option value="alert">Alert</option>
+              <option value="fog-horn">Fog horn</option>
+            </select>
+            <button class="sample-btn" id="previewCatchSound" type="button">▶ Hear sample</button>
+          </div>
+        </div>
       </div>
 
       <p class="hint" style="margin-top:14px;">More controls live in Settings and can be introduced when they become relevant to how you use ShieldVault.</p>
@@ -182,6 +199,7 @@
     </div>
   </main>
 
+  <script src="catch-audio.js"></script>
   <script src="onboarding.js"></script>
 </body>
 </html>

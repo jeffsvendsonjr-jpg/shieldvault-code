@@ -7,12 +7,20 @@
   const originalLegacyPlayBlockSound = playBlockSound;
   let lastPlayedAt = 0;
 
+  function soundIsEnabled() {
+    return typeof SHIELDVAULT_SETTINGS !== "undefined"
+      && SHIELDVAULT_SETTINGS
+      && SHIELDVAULT_SETTINGS.soundOnBlock === true;
+  }
+
   function playSelectedCatchSound() {
     const now = Date.now();
     if (now - lastPlayedAt < 250) return;
     lastPlayedAt = now;
 
-    const choice = SHIELDVAULT_SETTINGS && SHIELDVAULT_SETTINGS.catchSoundChoice
+    const choice = typeof SHIELDVAULT_SETTINGS !== "undefined"
+      && SHIELDVAULT_SETTINGS
+      && SHIELDVAULT_SETTINGS.catchSoundChoice
       ? SHIELDVAULT_SETTINGS.catchSoundChoice
       : "standard";
 
@@ -29,11 +37,13 @@
   // Legacy Plus code still calls playBlockSound() after showBlockedOverlay().
   // Route that call into the selected core sound and de-dupe it against the
   // universal hard-catch path below so each catch produces at most one cue.
-  playBlockSound = playSelectedCatchSound;
+  playBlockSound = function gatedLegacyBlockSound() {
+    if (soundIsEnabled()) playSelectedCatchSound();
+  };
 
   showBlockedOverlay = function catchSoundShowBlockedOverlay(el, text, detectorNames, options) {
     originalShowBlockedOverlay(el, text, detectorNames, options);
-    if (SHIELDVAULT_SETTINGS && SHIELDVAULT_SETTINGS.soundOnBlock) {
+    if (soundIsEnabled()) {
       playSelectedCatchSound();
     }
   };

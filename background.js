@@ -13,6 +13,8 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
   lateNightPostAlert: false,
   emotionalPostWarning: false,
   soundOnBlock: false,
+  catchSoundChoice: 'standard',
+  screenshotReviewGuard: false,
   emailReviewGuard: false,
   phoneReviewGuard: false,
 };

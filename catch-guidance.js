@@ -17,7 +17,7 @@
   function guidanceFor(detectorNames) {
     const names = normalize(detectorNames);
 
-    if (includesAny(names, ["mongodb url", "postgresql url", "mysql url", "redis url"])) {
+    if (includesAny(names, ["mongodb url", "postgresql url", "mysql url"])) {
       return {
         title: "Database credential detected",
         detailParts: [
@@ -31,11 +31,25 @@
       };
     }
 
-    if (includesAny(names, ["private key", "recovery phrase", "seed phrase", "mnemonic"])) {
+    if (includesAny(names, ["redis url"])) {
       return {
-        title: includesAny(names, ["recovery phrase", "seed phrase", "mnemonic"])
-          ? "Recovery credential detected"
-          : "Private key detected",
+        title: "Database credential detected",
+        detailParts: [{ text: "This Redis connection link contains authentication details that may grant access to a database." }],
+        next: "Don’t share this connection link as-is. Use a version with the authentication details removed or redacted. If it may already have been shared, rotate the Redis credential.",
+      };
+    }
+
+    if (includesAny(names, ["recovery phrase mention"])) {
+      return {
+        title: "Recovery phrase mentioned",
+        detailParts: [{ text: "This text refers to a recovery or seed phrase, but ShieldVault has not verified that recovery words are present." }],
+        next: "Review the surrounding text. If it includes actual recovery words, remove them before sharing.",
+      };
+    }
+
+    if (includesAny(names, ["private key"])) {
+      return {
+        title: "Private key detected",
         detailParts: [{ text: "This text may provide direct access to an account, wallet, or protected system." }],
         next: "Don’t share it. If it may already have been exposed, replace or revoke the credential before using it again.",
       };

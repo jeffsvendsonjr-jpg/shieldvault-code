@@ -7,7 +7,7 @@
 
   const SETTINGS_KEY = 'shieldvaultSettings';
   const SCREENSHOT_NAME = /(?:screen\s*shot|screenshot|screen\s*capture|snip(?:ping)?|capture)/i;
-  let enabled = true;
+  let enabled = false;
   let lastNoticeAt = 0;
 
   function isPaused() {
@@ -112,21 +112,21 @@
         changed = true;
       }
       if (!Object.prototype.hasOwnProperty.call(next, 'screenshotReviewGuard')) {
-        next.screenshotReviewGuard = true;
+        next.screenshotReviewGuard = false;
         changed = true;
       }
 
-      enabled = next.screenshotReviewGuard !== false;
+      enabled = next.screenshotReviewGuard === true;
       if (changed) await chrome.storage.local.set({ [SETTINGS_KEY]: next });
     } catch (_) {
-      enabled = true;
+      enabled = false;
     }
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes[SETTINGS_KEY]) return;
     const next = changes[SETTINGS_KEY].newValue || {};
-    enabled = next.screenshotReviewGuard !== false;
+    enabled = next.screenshotReviewGuard === true;
   });
 
   // Clipboard images are the strongest low-noise screenshot signal in the browser.

@@ -10,7 +10,7 @@
     privateInfoGuard: true,
     clientDataGuard: true,
     largePasteGuard: true,
-    screenshotReviewGuard: true,
+    screenshotReviewGuard: false,
     reputationGuard: false,
     lateNightPostAlert: false,
     emotionalPostWarning: false,
