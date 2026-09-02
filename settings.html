@@ -31,6 +31,12 @@
     .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .2s; }
     .toggle input:checked + .slider { background: var(--good); }
     .toggle input:checked + .slider::before { transform: translateX(18px); }
+    .sound-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sound-controls select, .sample-btn {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 9px; font-size: 12px;
+    }
+    .sample-btn { cursor: pointer; }
     .saved { color: var(--good); font-size: 12px; opacity: 0; transition: opacity .2s; }
     .saved.show { opacity: 1; }
     .pro-chip {
@@ -70,8 +76,26 @@
     </section>
 
     <section class="panel">
+      <h2>Catch sound</h2>
+      <p class="hint">Optional. Plays only when ShieldVault actually blocks something sensitive — useful if you type while looking away from the screen.</p>
+      <div class="row"><span class="label" id="sound-on-block-label">Play catch sound on hard blocks</span><label class="toggle"><input id="soundOnBlock" type="checkbox" aria-labelledby="sound-on-block-label"><span class="slider"></span></label></div>
+      <div class="row">
+        <span class="label">Sound</span>
+        <div class="sound-controls">
+          <select id="catchSoundChoice" aria-label="Catch sound">
+            <option value="standard">Standard</option>
+            <option value="alert">Alert</option>
+            <option value="fog-horn">Fog horn</option>
+          </select>
+          <button class="sample-btn" id="previewCatchSound" type="button">▶ Hear sample</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>Soft review (never blocks)</h2>
       <p class="hint">These are only flagged for review, never blocked. Turn off the ones you don't need — the same toggles appear on the review card.</p>
+      <div class="row"><span class="label" id="screenshot-review-label">Review screenshots and screenshot-like images</span><label class="toggle"><input id="screenshotReviewGuard" type="checkbox" aria-labelledby="screenshot-review-label"><span class="slider"></span></label></div>
       <div class="row"><span class="label">Review email addresses</span><label class="toggle"><input id="emailReviewGuard" type="checkbox"><span class="slider"></span></label></div>
       <div class="row"><span class="label">Review phone numbers</span><label class="toggle"><input id="phoneReviewGuard" type="checkbox"><span class="slider"></span></label></div>
     </section>
@@ -85,22 +109,16 @@
       <p class="pro-note" id="reputation-pro-note">These checks run with ShieldVault Pro. Your toggle is saved — it activates the moment you upgrade from the toolbar popup.</p>
     </section>
 
-    <section class="panel">
-      <h2>Pro extras <span class="pro-chip">PRO</span></h2>
-      <p class="hint">Requires ShieldVault Pro. Default: OFF</p>
-      <div class="row"><span class="label">Play a sound when a secret is blocked</span><label class="toggle"><input id="soundOnBlock" type="checkbox"><span class="slider"></span></label></div>
-      <p class="pro-note" id="sound-pro-note">Sound on block runs with ShieldVault Pro. Your toggle is saved — it activates the moment you upgrade from the toolbar popup.</p>
-    </section>
-
     <section class="panel upsell" id="pro-upsell" style="display: none;">
       <h2>ShieldVault Pro</h2>
-      <p>Behavioral detection (rage, threats, late-night guard), local rephrasing suggestions, context-aware cooldowns, and sound on block.</p>
+      <p>Behavioral detection (rage, threats, late-night guard), local rephrasing suggestions, and context-aware cooldowns.</p>
       <p><span class="price">$4.99/mo or $39 once (lifetime)</span> &mdash; upgrade from the ShieldVault toolbar popup.</p>
     </section>
 
     <div class="saved" id="saved-msg">Settings saved.</div>
   </div>
 
+  <script src="catch-audio.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
