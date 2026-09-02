@@ -55,6 +55,23 @@
       margin: 0 0 4px;
     }
     .hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .recommended-list {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0 4px;
+      display: grid;
+      gap: 8px;
+    }
+    .recommended-list li {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .recommended-list li::before {
+      content: '✓';
+      color: var(--good);
+      font-weight: 700;
+      margin-right: 8px;
+    }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
     .row:last-child { border-bottom: 0; }
     .row span { font-size: 13px; }
@@ -64,11 +81,6 @@
     .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .2s; }
     .toggle input:checked + .slider { background: var(--good); }
     .toggle input:checked + .slider::before { transform: translateX(18px); }
-    .sound-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .sound-controls select {
-      background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 8px; padding: 7px 9px; font-size: 12px;
-    }
     .sample {
       margin: 14px 0;
       padding: 10px;
@@ -90,6 +102,7 @@
       font-size: 13px;
     }
     .actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
+    .inline-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
     button {
       border: 1px solid var(--border);
       background: transparent;
@@ -100,6 +113,7 @@
       font-size: 13px;
     }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.linkish { border: 0; padding: 4px 0; color: var(--muted); text-decoration: underline; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .hidden { display: none; }
   </style>
@@ -115,43 +129,34 @@
     </section>
 
     <section data-step="2" class="hidden">
-      <h1>Choose protections</h1>
+      <h1>Recommended protection is ready.</h1>
+      <p>ShieldVault starts with high-confidence leak protection on. Optional behavioral features and catch sounds stay off until you choose them.</p>
       <div class="section">
-        <h2>Core Leak Protection</h2>
-        <p class="hint">Default ON</p>
+        <h2>Protection on</h2>
+        <ul class="recommended-list">
+          <li>Secrets, API keys, and tokens</li>
+          <li>Passwords and recovery phrases</li>
+          <li>Private and client information</li>
+          <li>Large paste review</li>
+          <li>Screenshot review</li>
+        </ul>
+        <div class="inline-actions">
+          <button id="customizeProtection" class="linkish" type="button" aria-expanded="false" aria-controls="customizePanel">Customize protection</button>
+        </div>
+      </div>
+
+      <div class="section hidden" id="customizePanel">
+        <h2>Customize core protection</h2>
+        <p class="hint">You can change these anytime in Settings.</p>
         <div class="row"><span>Secrets and API keys</span><label class="toggle"><input type="checkbox" id="secretGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Passwords and recovery phrases</span><label class="toggle"><input type="checkbox" id="passwordGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Private personal info</span><label class="toggle"><input type="checkbox" id="privateInfoGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Client/customer data</span><label class="toggle"><input type="checkbox" id="clientDataGuard" checked><span class="slider"></span></label></div>
         <div class="row"><span>Large paste review</span><label class="toggle"><input type="checkbox" id="largePasteGuard" checked><span class="slider"></span></label></div>
+        <div class="row"><span>Screenshot review</span><label class="toggle"><input type="checkbox" id="screenshotReviewGuard" checked><span class="slider"></span></label></div>
       </div>
-      <div class="section">
-        <h2>Screenshot review</h2>
-        <p class="hint">Default ON. Warns when a pasted or attached image looks like a screenshot, because sensitive text inside images can bypass text-only detection. ShieldVault does not read or upload the image.</p>
-        <div class="row"><span>Review screenshots before sending</span><label class="toggle"><input type="checkbox" id="screenshotReviewGuard" checked><span class="slider"></span></label></div>
-      </div>
-      <div class="section">
-        <h2>Catch sound</h2>
-        <p class="hint">Optional. Hear a short alert only when ShieldVault actually blocks sensitive content — useful if you type while looking at your hands or another screen.</p>
-        <div class="row"><span>Play catch sound on hard blocks</span><label class="toggle"><input type="checkbox" id="soundOnBlock"><span class="slider"></span></label></div>
-        <div class="row">
-          <span>Sound</span>
-          <div class="sound-controls">
-            <select id="catchSoundChoice" aria-label="Catch sound">
-              <option value="standard">Standard</option>
-              <option value="alert">Alert</option>
-              <option value="fog-horn">Fog horn</option>
-            </select>
-            <button id="previewCatchSound" type="button">▶ Hear sample</button>
-          </div>
-        </div>
-      </div>
-      <div class="section">
-        <h2>Optional Reputation Guard <span style="font-size:9px;font-weight:700;color:#000;background:#f4b740;border-radius:4px;padding:1px 5px;vertical-align:2px;letter-spacing:.04em">PRO</span></h2>
-        <p class="hint">Default OFF. Separate from leak prevention. Runs with ShieldVault Pro &mdash; your choice here is saved and activates when you upgrade.</p>
-        <div class="row"><span>Late-night posting check</span><label class="toggle"><input type="checkbox" id="lateNightPostAlert"><span class="slider"></span></label></div>
-        <div class="row"><span>Emotionally heated / rage-post warning</span><label class="toggle"><input type="checkbox" id="emotionalPostWarning"><span class="slider"></span></label></div>
-      </div>
+
+      <p class="hint" style="margin-top:14px;">More controls live in Settings and can be introduced when they become relevant to how you use ShieldVault.</p>
     </section>
 
     <section data-step="3" class="hidden">
@@ -177,7 +182,6 @@
     </div>
   </main>
 
-  <script src="catch-audio.js"></script>
   <script src="onboarding.js"></script>
 </body>
 </html>
