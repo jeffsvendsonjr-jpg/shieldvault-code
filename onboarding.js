@@ -27,29 +27,27 @@
   const demoResult = document.getElementById('demo-result');
   const openSettingsBtn = document.getElementById('open-settings');
   const doneBtn = document.getElementById('done');
-  const soundChoice = document.getElementById('catchSoundChoice');
-  const previewSound = document.getElementById('previewCatchSound');
+  const customizeBtn = document.getElementById('customizeProtection');
+  const customizePanel = document.getElementById('customizePanel');
   let step = 1;
   let onboardingSaved = false;
 
+  function checkedOrDefault(id, fallback) {
+    const element = document.getElementById(id);
+    return element ? element.checked : fallback;
+  }
+
   function currentSettingsFromUI() {
-    const lateNightPostAlert = document.getElementById('lateNightPostAlert').checked;
-    const emotionalPostWarning = document.getElementById('emotionalPostWarning').checked;
     return {
       ...DEFAULT_SETTINGS,
-      secretGuard: document.getElementById('secretGuard').checked,
+      secretGuard: checkedOrDefault('secretGuard', true),
       tokenGuard: true,
-      passwordGuard: document.getElementById('passwordGuard').checked,
-      recoveryPhraseGuard: document.getElementById('passwordGuard').checked,
-      privateInfoGuard: document.getElementById('privateInfoGuard').checked,
-      clientDataGuard: document.getElementById('clientDataGuard').checked,
-      largePasteGuard: document.getElementById('largePasteGuard').checked,
-      screenshotReviewGuard: document.getElementById('screenshotReviewGuard').checked,
-      soundOnBlock: document.getElementById('soundOnBlock').checked,
-      catchSoundChoice: soundChoice.value,
-      lateNightPostAlert,
-      emotionalPostWarning,
-      reputationGuard: lateNightPostAlert || emotionalPostWarning,
+      passwordGuard: checkedOrDefault('passwordGuard', true),
+      recoveryPhraseGuard: checkedOrDefault('passwordGuard', true),
+      privateInfoGuard: checkedOrDefault('privateInfoGuard', true),
+      clientDataGuard: checkedOrDefault('clientDataGuard', true),
+      largePasteGuard: checkedOrDefault('largePasteGuard', true),
+      screenshotReviewGuard: checkedOrDefault('screenshotReviewGuard', true),
     };
   }
 
@@ -69,7 +67,7 @@
     nextBtn.classList.toggle('hidden', hideNav);
 
     if (step === 1) nextBtn.textContent = 'Set up protection';
-    else if (step === 2) nextBtn.textContent = 'Continue';
+    else if (step === 2) nextBtn.textContent = 'Continue with recommended protection';
     else if (step === 3) nextBtn.textContent = 'Continue';
     else nextBtn.textContent = 'Done';
   }
@@ -78,8 +76,11 @@
     demoResult.style.display = 'block';
   });
 
-  previewSound.addEventListener('click', function () {
-    if (window.ShieldVaultCatchAudio) window.ShieldVaultCatchAudio.play(soundChoice.value);
+  customizeBtn.addEventListener('click', function () {
+    const willShow = customizePanel.classList.contains('hidden');
+    customizePanel.classList.toggle('hidden', !willShow);
+    customizeBtn.setAttribute('aria-expanded', String(willShow));
+    customizeBtn.textContent = willShow ? 'Hide customization' : 'Customize protection';
   });
 
   backBtn.addEventListener('click', function () {
@@ -97,13 +98,13 @@
         onboardingSaved = true;
       }
       render();
-      return;
     }
   });
 
   openSettingsBtn.addEventListener('click', function () {
     chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
   });
+
   doneBtn.addEventListener('click', function () {
     window.close();
   });
