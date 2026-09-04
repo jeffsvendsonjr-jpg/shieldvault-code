@@ -312,44 +312,29 @@
   // link a monthly→lifetime upgrade to the same Stripe customer.
   let proEmail = '';
 
-  // A null/absent expiry means "never expires" (lifetime). Only a positive
-  // expiry in the past counts as lapsed.
-  function getProStatus() {
+  // The service worker is the sole entitlement authority. Stored plan, expiry,
+  // tier, and Pro flags are display metadata and never grant access here.
+  function getProStatus(force = false) {
     return new Promise((resolve) => {
-      chrome.storage.local.get(["shieldvault_pro", "shieldvault_tier", "shieldvault_pro_expiry"], (result) => {
-        // Accept either entitlement key (both are written together) so the
-        // popup, settings page, and content script always agree on Pro.
-        const isPro = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
-        const expiry = result.shieldvault_pro_expiry;
-        const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
-        resolve(isPro && !expired);
-      });
-    });
-  }
-
-  // Persist Pro from a server activation/validation response. The server is the
-  // source of truth for the plan and when (if ever) it expires:
-  //   - lifetime  → data.expiresAt is null/omitted  → stored as null (no expiry)
-  //   - monthly   → data.expiresAt is the period end → stored and re-checked
-  // We deliberately do NOT invent a local 30-day window here; that previously
-  // expired lifetime purchases and never tracked real renewal.
-  async function saveProStatus(data) {
-    const expiry =
-      typeof data.expiresAt === 'number' && data.expiresAt > 0 ? data.expiresAt : null;
-    if (data.email) proEmail = data.email;
-    // If the server omits the plan, infer it from the expiry: a renewal date
-    // means monthly, no expiry means lifetime. Keeps the plan line + lifetime
-    // upsell working for older server responses.
-    const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
-    // Awaited so callers never repaint the UI from a stale read that raced
-    // this write. Failures propagate to the caller instead of vanishing.
-    await chrome.storage.local.set({
-      shieldvault_pro: true,
-      shieldvault_pro_expiry: expiry,
-      shieldvault_pro_plan: plan,
-      shieldvault_license_key: data.key || '',
-      shieldvault_tier: data.tier || 'plus',
-      shieldvault_email: data.email || proEmail || '',
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: force ? 'SHIELDVAULT_REFRESH_ENTITLEMENT' : 'SHIELDVAULT_GET_ENTITLEMENT',
+            force,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) return resolve(false);
+            if (response && response.isPro === true && response.email) {
+              proEmail = response.email;
+            } else if (response && response.isPro === false) {
+              proEmail = '';
+            }
+            resolve(Boolean(response && response.isPro === true));
+          }
+        );
+      } catch (_) {
+        resolve(false);
+      }
     });
   }
 
@@ -358,16 +343,18 @@
   // cancellation requires backend support (a customer-portal endpoint) before
   // a "Manage billing" button can exist here — do not add one until the route
   // is real and verified.
-  async function clearProStatus() {
-    proEmail = '';
-    await chrome.storage.local.remove([
-      "shieldvault_pro",
-      "shieldvault_pro_expiry",
-      "shieldvault_pro_plan",
-      "shieldvault_license_key",
-      "shieldvault_tier",
-      "shieldvault_email",
-    ]);
+  function clearProStatus() {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'SHIELDVAULT_REMOVE_LICENSE' }, (response) => {
+          if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+          proEmail = '';
+          resolve(response);
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   async function applyProState() {
@@ -423,34 +410,13 @@
     );
   }
 
-  // Re-check a stored license with the server so monthly renewals extend and
-  // cancelled subs are revoked. Network failures are non-destructive — we keep
-  // the existing local state (which still honours its own expiry) and try again
-  // next time the popup opens.
-  function revalidateLicense() {
-    chrome.storage.local.get(['shieldvault_license_key'], async (result) => {
-      const key = result.shieldvault_license_key;
-      if (!key) return;
-      try {
-        const res = await fetch(API_BASE + '/api/license/activate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key }),
-        });
-        if (!res.ok) return; // transient — leave state untouched
-        const data = await res.json();
-        if (data && data.valid) {
-          await saveProStatus({ key, tier: data.tier || 'plus', plan: data.plan, expiresAt: data.expiresAt, email: data.email });
-        } else {
-          await clearProStatus(); // server says this key is no longer entitled
-        }
-        await applyProState();
-      } catch (err) {
-        // Offline or server down: keep current state, retry next open. Logged
-        // (not swallowed) so a persistent storage failure is visible in devtools.
-        console.warn('[ShieldVault] license revalidation failed:', err);
-      }
-    });
+  // Re-check a stored license with the worker so renewals, revocations, cache,
+  // and offline grace all follow the same authoritative policy.
+  async function revalidateLicense() {
+    // Popup-open validation delegates cache, grace, and revocation policy to
+    // the worker, then repaints from that authoritative decision.
+    await getProStatus(true);
+    await applyProState();
   }
 
   // Seed the buyer's email into memory on popup load (a fast local read that
@@ -549,24 +515,19 @@
     errorEl.style.display = 'none';
 
     try {
-      const res = await fetch(API_BASE + '/api/license/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: 'SHIELDVAULT_ACTIVATE_LICENSE', key },
+          (result) => {
+            if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+            resolve(result);
+          }
+        );
       });
-      if (!res.ok) {
-        const body = await res.json().catch(function () { return {}; });
-        throw new Error(body.error || 'Invalid license key');
+      if (!response || response.isPro !== true) {
+        throw new Error((response && response.error) || 'Invalid license key');
       }
-      const data = await res.json();
-      if (!data.valid) throw new Error('Invalid license key');
-      await saveProStatus({
-        key,
-        tier: data.tier || 'plus',
-        plan: data.plan,
-        expiresAt: data.expiresAt,
-        email: data.email,
-      });
+      if (response.email) proEmail = response.email;
       await applyProState();
     } catch (err) {
       errorEl.textContent = err.message || 'Activation failed. Please try again.';

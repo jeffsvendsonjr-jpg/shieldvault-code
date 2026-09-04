@@ -3,7 +3,7 @@
   "name": "ShieldVault - AI Chat Secret Protection",
   "short_name": "ShieldVault",
   "version": "1.7.7",
-  "description": "Detects API keys in AI chats and prevents regrettable behavior (angry posts, passive-aggression) before you hit send. 100% local.",
+  "description": "Detects API keys in AI chats and prevents regrettable sends (angry posts, passive-aggression). Detection runs 100% on-device.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -56,7 +56,6 @@
         "https://linear.app/*",
         "https://*.atlassian.net/*",
         "https://www.notion.so/*",
-        "https://docs.google.com/*",
         "https://*.replit.app/*",
         "https://replit.com/*",
         "https://codesandbox.io/*",

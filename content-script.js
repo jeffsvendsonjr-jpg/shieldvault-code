@@ -29,26 +29,52 @@ const SHIELDVAULT_DEFAULT_SETTINGS = {
 let SHIELDVAULT_SETTINGS = { ...SHIELDVAULT_DEFAULT_SETTINGS };
 
 // ================================
-// TIER — read from storage; default to basic
+// TIER — granted only by the service worker after backend verification
 // ================================
 let USER_TIER = "basic";
+const SHIELDVAULT_ENTITLEMENT_REFRESH_MS = 15 * 60 * 1000;
+let SHIELDVAULT_ENTITLEMENT_TIMER = null;
+let SHIELDVAULT_ENTITLEMENT_REVISION = 0;
 
-// Effective tier honours expiry: a 'plus' tier whose Pro window has lapsed
-// (positive expiry in the past) is treated as basic, even if the popup hasn't
-// re-validated yet. A null/absent expiry means lifetime (never expires).
-function effectiveTier(tier, expiry, proFlag) {
-  const expired = typeof expiry === "number" && expiry > 0 && Date.now() > expiry;
-  // Entitlement is stored under two keys (shieldvault_tier and the legacy
-  // shieldvault_pro boolean); saveProStatus writes both, but reads accept
-  // EITHER so a partial write or manual edit can never split the settings
-  // page and the detection engine into disagreeing about Pro.
-  const entitled = tier === "plus" || proFlag === true;
-  return entitled && !expired ? "plus" : "basic";
+function applyVerifiedTier(state) {
+  USER_TIER = state && state.isPro === true ? "plus" : "basic";
+  if (SHIELDVAULT_ENTITLEMENT_TIMER !== null) {
+    clearTimeout(SHIELDVAULT_ENTITLEMENT_TIMER);
+    SHIELDVAULT_ENTITLEMENT_TIMER = null;
+  }
+  if (USER_TIER !== "plus") return;
+
+  // Re-check long-lived tabs at the cache boundary (or sooner at plan expiry).
+  // Tabs suspended by Chrome run this when they resume.
+  let delay = SHIELDVAULT_ENTITLEMENT_REFRESH_MS;
+  if (typeof state.expiresAt === "number" && state.expiresAt > 0) {
+    delay = Math.min(delay, Math.max(1000, state.expiresAt - Date.now()));
+  }
+  SHIELDVAULT_ENTITLEMENT_TIMER = setTimeout(() => {
+    requestVerifiedTier(false);
+  }, delay);
 }
 
-chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
-  USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry, result.shieldvault_pro);
-});
+function requestVerifiedTier(force = false) {
+  const requestRevision = SHIELDVAULT_ENTITLEMENT_REVISION;
+  try {
+    chrome.runtime.sendMessage(
+      { type: "SHIELDVAULT_GET_ENTITLEMENT", force },
+      (response) => {
+        if (requestRevision !== SHIELDVAULT_ENTITLEMENT_REVISION) return;
+        if (chrome.runtime.lastError) {
+          applyVerifiedTier({ isPro: false });
+          return;
+        }
+        applyVerifiedTier(response);
+      }
+    );
+  } catch (_) {
+    applyVerifiedTier({ isPro: false });
+  }
+}
+
+requestVerifiedTier(false);
 
 const SHIELDVAULT_BYPASS_WINDOW_MS = 45000;
 const SHIELDVAULT_ACTIVE_BYPASSES = [];
@@ -122,14 +148,15 @@ function refreshPausedState() {
   }
 }
 
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "SHIELDVAULT_ENTITLEMENT_CHANGED") {
+    SHIELDVAULT_ENTITLEMENT_REVISION += 1;
+    applyVerifiedTier(message);
+  }
+});
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.shieldvault_tier || changes.shieldvault_pro || changes.shieldvault_pro_expiry) {
-    chrome.storage.local.get(["shieldvault_tier", "shieldvault_pro", "shieldvault_pro_expiry"], (result) => {
-      if (chrome.runtime.lastError) return;
-      USER_TIER = effectiveTier(result.shieldvault_tier, result.shieldvault_pro_expiry, result.shieldvault_pro);
-    });
-  }
   if (changes[SHIELDVAULT_PAUSED_DOMAINS_KEY]) {
     SHIELDVAULT_PAUSED = isHostPaused(changes[SHIELDVAULT_PAUSED_DOMAINS_KEY].newValue);
     reportPausedBadge();
@@ -264,7 +291,7 @@ const DETECTORS = [
   { name: "Slack Webhook", pattern: /hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/ },
   
   // Discord
-  { name: "Discord Bot Token", pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}/ },
+  { name: "Discord Bot Token", pattern: /\b[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}\b/ },
   { name: "Discord Webhook", pattern: /discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_-]+/ },
   
   // npm
@@ -274,7 +301,7 @@ const DETECTORS = [
   { name: "PyPI Token", pattern: /pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}/ },
   
   // Twilio
-  { name: "Twilio API Key", pattern: /SK[0-9a-fA-F]{32}/ },
+  { name: "Twilio API Key", pattern: /\bSK[0-9a-fA-F]{32}\b/ },
   // Note: Account SID (AC...) is a public account identifier, not a secret.
   
   // SendGrid
