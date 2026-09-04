@@ -1,0 +1,43 @@
+name: Production Detector Anthology
+
+on:
+  pull_request:
+    paths:
+      - "content-script.js"
+      - "tests/anthology/**"
+      - ".github/workflows/anthology-production.yml"
+  workflow_dispatch:
+
+jobs:
+  anthology:
+    name: Test production detector against public anthology
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ShieldVault production code
+        uses: actions/checkout@v4
+        with:
+          path: shieldvault-code
+
+      - name: Check out public ShieldVault anthology
+        uses: actions/checkout@v4
+        with:
+          repository: jeffsvendsonjr-jpg/shieldvault-source
+          ref: agent/detection-anthology-foundation
+          path: shieldvault-anthology
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run production detector anthology
+        working-directory: shieldvault-code
+        run: node tests/anthology/run-anthology.mjs ../shieldvault-anthology/anthology/cases
+
+      - name: Upload anthology report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-anthology-report
+          path: shieldvault-code/tests/anthology/artifacts/production-anthology-report.json
+          if-no-files-found: error
