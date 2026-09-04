@@ -12,16 +12,27 @@ const SESSION_KEY = 'shieldvault_verified_session';
 const TTL_MS = 15 * 60 * 1000;
 const GRACE_MS = 72 * 60 * 60 * 1000;
 const START_TIME = 1_800_000_000_000;
+const LOCAL_ENTITLEMENT_METADATA_KEYS = [
+  'shieldvault_pro',
+  'shieldvault_pro_expiry',
+  'shieldvault_pro_plan',
+  'shieldvault_tier',
+  'shieldvault_email',
+  'shieldvault_last_verified_at',
+];
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
-function storageArea(seed = {}) {
+function storageArea(seed = {}, { beforeGet } = {}) {
   const state = clone(seed);
+  const removeCalls = [];
   return {
     state,
+    removeCalls,
     async get(keys) {
+      if (beforeGet) await beforeGet(clone(keys));
       if (keys == null) return clone(state);
       const result = {};
       if (typeof keys === 'string') keys = [keys];
@@ -43,6 +54,7 @@ function storageArea(seed = {}) {
     },
     async remove(keys) {
       if (!Array.isArray(keys)) keys = [keys];
+      removeCalls.push(clone(keys));
       for (const key of keys) delete state[key];
     },
   };
@@ -69,7 +81,7 @@ function serverResponse(data, { ok = true, status = 200 } = {}) {
 }
 
 function createHarness(options = {}) {
-  const local = storageArea(options.local);
+  const local = storageArea(options.local, { beforeGet: options.localBeforeGet });
   const session = storageArea(options.session);
   const onInstalled = eventChannel();
   const onStartup = eventChannel();
@@ -406,6 +418,100 @@ test('concurrent requests share one backend validation', async () => {
   assert.ok(results.every((result) => result.isPro === true));
 });
 
+test('repeated no-license requests return Basic directly and fan out once per worker', async () => {
+  const harness = createHarness({
+    tabs: [{ id: 11 }, { id: 22 }],
+    fetch: async () => assert.fail('no-key state must not contact the server'),
+  });
+
+  const results = await Promise.all([
+    harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' }),
+    harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' }),
+    harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' }),
+  ]);
+  assert.deepEqual(results, [
+    { isPro: false, reason: 'no_license' },
+    { isPro: false, reason: 'no_license' },
+    { isPro: false, reason: 'no_license' },
+  ]);
+
+  const runtimeChanges = harness.runtimeMessages.filter(
+    (message) => message.type === 'SHIELDVAULT_ENTITLEMENT_CHANGED'
+  );
+  const tabChanges = harness.tabMessages.filter(
+    ({ message }) => message.type === 'SHIELDVAULT_ENTITLEMENT_CHANGED'
+  );
+  assert.equal(runtimeChanges.length, 1);
+  assert.equal(runtimeChanges[0].isPro, false);
+  assert.deepEqual(tabChanges.map(({ tabId }) => tabId), [11, 22]);
+  assert.ok(tabChanges.every(({ message }) => message.isPro === false));
+});
+
+test('a clean never-purchased install does not remove local entitlement metadata', async () => {
+  const harness = createHarness({
+    fetch: async () => assert.fail('no-key state must not contact the server'),
+  });
+
+  const result = await harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' });
+  assert.deepEqual(result, { isPro: false, reason: 'no_license' });
+  assert.deepEqual(harness.local.removeCalls, []);
+});
+
+test('stale local entitlement metadata is removed without removing the license key', async () => {
+  const harness = createHarness({
+    local: {
+      shieldvault_license_key: '   ',
+      shieldvault_email: '',
+      unrelated: 'keep-me',
+    },
+    fetch: async () => assert.fail('blank-key state must not contact the server'),
+  });
+
+  const result = await harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' });
+  assert.deepEqual(result, { isPro: false, reason: 'no_license' });
+  assert.deepEqual(harness.local.removeCalls, [LOCAL_ENTITLEMENT_METADATA_KEYS]);
+  for (const key of LOCAL_ENTITLEMENT_METADATA_KEYS) {
+    assert.equal(Object.prototype.hasOwnProperty.call(harness.local.state, key), false);
+  }
+  assert.equal(harness.local.state.shieldvault_license_key, '   ');
+  assert.equal(harness.local.state.unrelated, 'keep-me');
+});
+
+test('deliberate entitlement actions force broadcasts when signatures match', async (t) => {
+  await t.test('activation forces a matching Plus broadcast', async () => {
+    const harness = createHarness({
+      tabs: [{ id: 7 }],
+      fetch: async () => serverResponse({ valid: true, plan: 'lifetime' }),
+    });
+
+    const first = await harness.request({
+      type: 'SHIELDVAULT_ACTIVATE_LICENSE',
+      key: 'same-key',
+    });
+    const second = await harness.request({
+      type: 'SHIELDVAULT_ACTIVATE_LICENSE',
+      key: 'same-key',
+    });
+
+    assert.equal(first.isPro, true);
+    assert.deepEqual(second, first);
+    assert.equal(harness.runtimeMessages.length, 2);
+    assert.deepEqual(harness.tabMessages.map(({ tabId }) => tabId), [7, 7]);
+  });
+
+  await t.test('removal forces a matching Basic broadcast', async () => {
+    const harness = createHarness({ tabs: [{ id: 9 }] });
+
+    const first = await harness.request({ type: 'SHIELDVAULT_REMOVE_LICENSE' });
+    const second = await harness.request({ type: 'SHIELDVAULT_REMOVE_LICENSE' });
+
+    assert.deepEqual(first, { isPro: false, reason: 'no_license' });
+    assert.deepEqual(second, first);
+    assert.equal(harness.runtimeMessages.length, 2);
+    assert.deepEqual(harness.tabMessages.map(({ tabId }) => tabId), [9, 9]);
+  });
+});
+
 test('all open tabs receive entitlement grants and revocations', async () => {
   const responses = [
     serverResponse({ valid: true, plan: 'lifetime' }),
@@ -474,6 +580,66 @@ test('cache identity and stale responses cannot survive key changes or removal',
     assert.equal(harness.local.state.shieldvault_license_key, undefined);
     assert.equal(harness.local.state.shieldvault_pro, undefined);
   });
+});
+
+test('an older no-license request cannot override a newer activation', async () => {
+  let metadataReadStarted = false;
+  let releaseMetadataRead;
+  const metadataReadGate = new Promise((resolve) => {
+    releaseMetadataRead = resolve;
+  });
+  const harness = createHarness({
+    localBeforeGet: async (keys) => {
+      if (
+        !metadataReadStarted &&
+        Array.isArray(keys) &&
+        keys.length === LOCAL_ENTITLEMENT_METADATA_KEYS.length &&
+        LOCAL_ENTITLEMENT_METADATA_KEYS.every((key) => keys.includes(key))
+      ) {
+        metadataReadStarted = true;
+        await metadataReadGate;
+      }
+    },
+    tabs: [{ id: 17 }],
+    fetch: async () => serverResponse({
+      valid: true,
+      plan: 'lifetime',
+      email: 'new@example.com',
+    }),
+  });
+
+  const olderRequest = harness.request({ type: 'SHIELDVAULT_GET_ENTITLEMENT' });
+  await eventually(() => metadataReadStarted, 'no-license metadata read did not start');
+
+  let activated;
+  try {
+    activated = await harness.request({
+      type: 'SHIELDVAULT_ACTIVATE_LICENSE',
+      key: 'new-key',
+    });
+  } finally {
+    releaseMetadataRead();
+  }
+  const olderResult = await olderRequest;
+
+  assert.equal(activated.isPro, true);
+  assert.equal(olderResult.isPro, false);
+  assert.equal(olderResult.reason, 'license_changed');
+  assert.equal(harness.local.state.shieldvault_license_key, 'new-key');
+  assert.equal(harness.local.state.shieldvault_pro, true);
+  assert.equal(harness.local.state.shieldvault_tier, 'plus');
+  assert.equal(harness.session.state[SESSION_KEY].licenseKey, 'new-key');
+  assert.equal(harness.local.removeCalls.length, 1);
+
+  const runtimeChanges = harness.runtimeMessages.filter(
+    (message) => message.type === 'SHIELDVAULT_ENTITLEMENT_CHANGED'
+  );
+  const tabChanges = harness.tabMessages.filter(
+    ({ message }) => message.type === 'SHIELDVAULT_ENTITLEMENT_CHANGED'
+  );
+  assert.equal(runtimeChanges.length, 1);
+  assert.equal(runtimeChanges[0].isPro, true);
+  assert.deepEqual(tabChanges.map(({ tabId, message }) => [tabId, message.isPro]), [[17, true]]);
 });
 
 test('startup and popup-open paths force validation', async () => {

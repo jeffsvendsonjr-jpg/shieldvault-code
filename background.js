@@ -34,6 +34,14 @@ const SHIELDVAULT_API_BASE = 'https://shieldvault.site';
 const SHIELDVAULT_VERIFY_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SHIELDVAULT_OFFLINE_GRACE_MS = 72 * 60 * 60 * 1000; // 72 hours
 const SHIELDVAULT_SESSION_CACHE_KEY = 'shieldvault_verified_session';
+const SHIELDVAULT_LOCAL_ENTITLEMENT_METADATA_KEYS = [
+  'shieldvault_pro',
+  'shieldvault_pro_expiry',
+  'shieldvault_pro_plan',
+  'shieldvault_tier',
+  'shieldvault_email',
+  'shieldvault_last_verified_at',
+];
 
 // Coalesce backend checks for the same key, including forced refreshes. Cache
 // reads remain outside this coordinator so a forced refresh never joins a
@@ -89,14 +97,7 @@ async function clearVerifiedSessionCache() {
 }
 
 async function clearLocalEntitlementMetadata({ keepLicenseKey = true } = {}) {
-  const keys = [
-    'shieldvault_pro',
-    'shieldvault_pro_expiry',
-    'shieldvault_pro_plan',
-    'shieldvault_tier',
-    'shieldvault_email',
-    'shieldvault_last_verified_at',
-  ];
+  const keys = [...SHIELDVAULT_LOCAL_ENTITLEMENT_METADATA_KEYS];
   if (!keepLicenseKey) keys.push('shieldvault_license_key');
   await chrome.storage.local.remove(keys);
 }
@@ -254,8 +255,8 @@ async function validateLicenseWithBackend(key, cached, generation) {
 }
 
 async function verifyStoredLicense({ force = false } = {}) {
+  const generation = shieldVaultEntitlementGeneration;
   try {
-    const generation = shieldVaultEntitlementGeneration;
     const stored = await chrome.storage.local.get(['shieldvault_license_key']);
     const key = typeof stored.shieldvault_license_key === 'string'
       ? stored.shieldvault_license_key.trim()
@@ -266,7 +267,23 @@ async function verifyStoredLicense({ force = false } = {}) {
       if (generation !== shieldVaultEntitlementGeneration) {
         return { isPro: false, reason: 'license_changed' };
       }
-      await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+
+      const storedMetadata = await chrome.storage.local.get(
+        SHIELDVAULT_LOCAL_ENTITLEMENT_METADATA_KEYS
+      );
+      if (generation !== shieldVaultEntitlementGeneration) {
+        return { isPro: false, reason: 'license_changed' };
+      }
+
+      const hasStaleMetadata = SHIELDVAULT_LOCAL_ENTITLEMENT_METADATA_KEYS.some(
+        (metadataKey) => Object.prototype.hasOwnProperty.call(storedMetadata, metadataKey)
+      );
+      if (hasStaleMetadata) {
+        await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+        if (generation !== shieldVaultEntitlementGeneration) {
+          return { isPro: false, reason: 'license_changed' };
+        }
+      }
       return { isPro: false, reason: 'no_license' };
     }
 
@@ -293,6 +310,9 @@ async function verifyStoredLicense({ force = false } = {}) {
     return validateLicenseWithBackend(key, cached, generation);
   } catch (error) {
     console.warn('[ShieldVault] Pro verification failed:', error);
+    if (generation !== shieldVaultEntitlementGeneration) {
+      return { isPro: false, reason: 'license_changed' };
+    }
     return { isPro: false, reason: 'verification_unavailable' };
   }
 }
@@ -310,6 +330,17 @@ function publicEntitlementState(state) {
   return result;
 }
 
+let shieldVaultLastBroadcastSignature = null;
+
+function entitlementSignature(state) {
+  const publicState = publicEntitlementState(state);
+  return JSON.stringify({
+    isPro: publicState.isPro,
+    plan: publicState.plan ?? null,
+    expiresAt: publicState.expiresAt ?? null,
+  });
+}
+
 async function popupEntitlementState(state) {
   const response = publicEntitlementState(state);
   if (!response.isPro) return response;
@@ -320,9 +351,14 @@ async function popupEntitlementState(state) {
   return response;
 }
 
-async function broadcastEntitlement(state) {
+async function broadcastEntitlement(state, { force = false } = {}) {
   // A stale request must never overwrite a newer activation/removal broadcast.
   if (state && state.reason === 'license_changed') return;
+
+  const signature = entitlementSignature(state);
+  if (!force && signature === shieldVaultLastBroadcastSignature) return;
+  shieldVaultLastBroadcastSignature = signature;
+
   const message = {
     type: 'SHIELDVAULT_ENTITLEMENT_CHANGED',
     ...publicEntitlementState(state),
@@ -366,7 +402,7 @@ async function activateLicense(rawKey) {
     { isPro: false, reason: 'unverified' },
     generation
   );
-  await broadcastEntitlement(state);
+  await broadcastEntitlement(state, { force: true });
 
   const response = await popupEntitlementState(state);
   if (!response.isPro && state && typeof state.error === 'string') {
@@ -380,7 +416,7 @@ async function removeLicense() {
   await clearLocalEntitlementMetadata({ keepLicenseKey: false });
   await clearVerifiedSessionCache();
   const state = { isPro: false, reason: 'no_license' };
-  await broadcastEntitlement(state);
+  await broadcastEntitlement(state, { force: true });
   return state;
 }
 
