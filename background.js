@@ -26,6 +26,364 @@ const SHIELDVAULT_MAX_PROOFS = 100;
 // hard-block proofs that make up the real audit trail.
 const SHIELDVAULT_MAX_REVIEW_PROOFS = 25;
 
+// ── Pro entitlement authority ────────────────────────────────────────────────
+// Local storage keeps the license key and display metadata only. Every Plus
+// decision is made here after the backend validates the stored key or from a
+// session-scoped cache that only a successful backend check can create.
+const SHIELDVAULT_API_BASE = 'https://shieldvault.site';
+const SHIELDVAULT_VERIFY_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const SHIELDVAULT_OFFLINE_GRACE_MS = 72 * 60 * 60 * 1000; // 72 hours
+const SHIELDVAULT_SESSION_CACHE_KEY = 'shieldvault_verified_session';
+
+// Coalesce backend checks for the same key, including forced refreshes. Cache
+// reads remain outside this coordinator so a forced refresh never joins a
+// non-forced request that can return cached state without contacting the server.
+let shieldVaultProCheckPromise = null;
+let shieldVaultProCheckKey = '';
+let shieldVaultProCheckGeneration = 0;
+let shieldVaultEntitlementGeneration = 0;
+
+async function readVerifiedSessionCache(key) {
+  try {
+    const stored = await chrome.storage.session.get([SHIELDVAULT_SESSION_CACHE_KEY]);
+    const cache = stored[SHIELDVAULT_SESSION_CACHE_KEY];
+    if (
+      !cache ||
+      cache.isPro !== true ||
+      cache.licenseKey !== key ||
+      typeof cache.verifiedAt !== 'number' ||
+      cache.verifiedAt <= 0
+    ) {
+      return { isPro: false, reason: 'unverified' };
+    }
+    const expiry = typeof cache.expiresAt === 'number' && cache.expiresAt > 0
+      ? cache.expiresAt
+      : null;
+    if (expiry !== null && Date.now() >= expiry) {
+      return { isPro: false, reason: 'expired' };
+    }
+    return {
+      isPro: true,
+      plan: cache.plan || null,
+      expiresAt: expiry,
+      verifiedAt: cache.verifiedAt,
+    };
+  } catch (_) {
+    return { isPro: false, reason: 'unverified' };
+  }
+}
+
+async function writeVerifiedSessionCache(cache) {
+  try {
+    await chrome.storage.session.set({ [SHIELDVAULT_SESSION_CACHE_KEY]: cache });
+  } catch (_) {
+    // If session storage is unavailable, entitlement must be verified again
+    // after this worker is suspended. Never fall back to local display flags.
+  }
+}
+
+async function clearVerifiedSessionCache() {
+  try {
+    await chrome.storage.session.remove(SHIELDVAULT_SESSION_CACHE_KEY);
+  } catch (_) {}
+}
+
+async function clearLocalEntitlementMetadata({ keepLicenseKey = true } = {}) {
+  const keys = [
+    'shieldvault_pro',
+    'shieldvault_pro_expiry',
+    'shieldvault_pro_plan',
+    'shieldvault_tier',
+    'shieldvault_email',
+    'shieldvault_last_verified_at',
+  ];
+  if (!keepLicenseKey) keys.push('shieldvault_license_key');
+  await chrome.storage.local.remove(keys);
+}
+
+function offlineGraceDecision(cached) {
+  const age = cached.isPro === true && typeof cached.verifiedAt === 'number'
+    ? Date.now() - cached.verifiedAt
+    : Infinity;
+  const withinGrace =
+    cached.isPro === true &&
+    age >= 0 &&
+    age < SHIELDVAULT_OFFLINE_GRACE_MS;
+
+  return withinGrace
+    ? { ...cached, reason: 'grace' }
+    : { isPro: false, reason: 'verification_unavailable' };
+}
+
+async function licenseStillCurrent(key, generation) {
+  if (generation !== shieldVaultEntitlementGeneration) return false;
+  const stored = await chrome.storage.local.get(['shieldvault_license_key']);
+  const current = typeof stored.shieldvault_license_key === 'string'
+    ? stored.shieldvault_license_key.trim()
+    : '';
+  return generation === shieldVaultEntitlementGeneration && current === key;
+}
+
+async function offlineGraceForCurrentLicense(key, cached, generation) {
+  if (!(await licenseStillCurrent(key, generation))) {
+    return { isPro: false, reason: 'license_changed' };
+  }
+  return offlineGraceDecision(cached);
+}
+
+async function validateLicenseWithBackend(key, cached, generation) {
+  if (
+    shieldVaultProCheckPromise &&
+    shieldVaultProCheckKey === key &&
+    shieldVaultProCheckGeneration === generation
+  ) {
+    return shieldVaultProCheckPromise;
+  }
+
+  const check = (async () => {
+    let response;
+    try {
+      response = await fetch(SHIELDVAULT_API_BASE + '/api/license/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+    } catch (_) {
+      return offlineGraceForCurrentLicense(key, cached, generation);
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (_) {
+      return offlineGraceForCurrentLicense(key, cached, generation);
+    }
+
+    if (!(await licenseStillCurrent(key, generation))) {
+      return { isPro: false, reason: 'license_changed' };
+    }
+
+    const expiry = data && typeof data.expiresAt === 'number' && data.expiresAt > 0
+      ? data.expiresAt
+      : null;
+    const expired =
+      (data && data.expired === true) ||
+      (data && data.reason === 'expired') ||
+      (expiry !== null && Date.now() >= expiry);
+
+    // A definitive invalid response revokes even when the backend uses a 4xx
+    // status. Grace is reserved for failures with no authoritative decision.
+    if (data && data.valid === false) {
+      await clearVerifiedSessionCache();
+      if (!(await licenseStillCurrent(key, generation))) {
+        return { isPro: false, reason: 'license_changed' };
+      }
+      await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+      return {
+        isPro: false,
+        reason: expired ? 'expired' : 'invalid',
+        error: typeof data.error === 'string' ? data.error.slice(0, 200) : undefined,
+      };
+    }
+    if (!response.ok) return offlineGraceForCurrentLicense(key, cached, generation);
+
+    if (!data || data.valid !== true || expired) {
+      await clearVerifiedSessionCache();
+      if (!(await licenseStillCurrent(key, generation))) {
+        return { isPro: false, reason: 'license_changed' };
+      }
+      await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+      return { isPro: false, reason: expired ? 'expired' : 'invalid' };
+    }
+
+    const plan = data.plan || (expiry ? 'monthly' : 'lifetime');
+    const verifiedAt = Date.now();
+    const verifiedState = {
+      isPro: true,
+      plan,
+      expiresAt: expiry,
+      verifiedAt,
+      reason: 'verified',
+    };
+    await writeVerifiedSessionCache({ ...verifiedState, licenseKey: key });
+
+    if (!(await licenseStillCurrent(key, generation))) {
+      return { isPro: false, reason: 'license_changed' };
+    }
+
+    // These values support display and checkout only. No consumer may use them
+    // as proof of entitlement.
+    try {
+      await chrome.storage.local.set({
+        shieldvault_pro: true,
+        shieldvault_tier: data.tier || 'plus',
+        shieldvault_pro_expiry: expiry,
+        shieldvault_pro_plan: plan,
+        shieldvault_email: data.email || '',
+      });
+    } catch (error) {
+      // Display metadata is best-effort. A successful server verification and
+      // session cache remain the authority even if this convenience write fails.
+      console.warn('[ShieldVault] Could not store entitlement display metadata:', error);
+    }
+
+    if (!(await licenseStillCurrent(key, generation))) {
+      return { isPro: false, reason: 'license_changed' };
+    }
+
+    return verifiedState;
+  })().catch((error) => {
+    console.warn('[ShieldVault] Pro verification failed:', error);
+    return { isPro: false, reason: 'verification_unavailable' };
+  });
+
+  shieldVaultProCheckKey = key;
+  shieldVaultProCheckGeneration = generation;
+  shieldVaultProCheckPromise = check;
+  try {
+    return await check;
+  } finally {
+    // A different-key check may have replaced the active slot while this one
+    // was in flight. Only its own completion may clear the slot.
+    if (shieldVaultProCheckPromise === check) {
+      shieldVaultProCheckPromise = null;
+      shieldVaultProCheckKey = '';
+      shieldVaultProCheckGeneration = 0;
+    }
+  }
+}
+
+async function verifyStoredLicense({ force = false } = {}) {
+  try {
+    const generation = shieldVaultEntitlementGeneration;
+    const stored = await chrome.storage.local.get(['shieldvault_license_key']);
+    const key = typeof stored.shieldvault_license_key === 'string'
+      ? stored.shieldvault_license_key.trim()
+      : '';
+
+    if (!key) {
+      await clearVerifiedSessionCache();
+      if (generation !== shieldVaultEntitlementGeneration) {
+        return { isPro: false, reason: 'license_changed' };
+      }
+      await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+      return { isPro: false, reason: 'no_license' };
+    }
+
+    const cached = await readVerifiedSessionCache(key);
+    if (
+      shieldVaultProCheckPromise &&
+      shieldVaultProCheckKey === key &&
+      shieldVaultProCheckGeneration === generation
+    ) {
+      return shieldVaultProCheckPromise;
+    }
+    const sinceLastGoodCheck = cached.isPro
+      ? Date.now() - cached.verifiedAt
+      : Infinity;
+    if (
+      !force &&
+      cached.isPro &&
+      sinceLastGoodCheck >= 0 &&
+      sinceLastGoodCheck < SHIELDVAULT_VERIFY_TTL_MS
+    ) {
+      return { ...cached, reason: 'cached' };
+    }
+
+    return validateLicenseWithBackend(key, cached, generation);
+  } catch (error) {
+    console.warn('[ShieldVault] Pro verification failed:', error);
+    return { isPro: false, reason: 'verification_unavailable' };
+  }
+}
+
+function publicEntitlementState(state) {
+  const result = {
+    isPro: Boolean(state && state.isPro === true),
+    reason: state && typeof state.reason === 'string' ? state.reason : 'unverified',
+  };
+  if (result.isPro) {
+    result.plan = state.plan || null;
+    result.expiresAt = typeof state.expiresAt === 'number' ? state.expiresAt : null;
+    result.verifiedAt = typeof state.verifiedAt === 'number' ? state.verifiedAt : null;
+  }
+  return result;
+}
+
+async function popupEntitlementState(state) {
+  const response = publicEntitlementState(state);
+  if (!response.isPro) return response;
+  try {
+    const stored = await chrome.storage.local.get(['shieldvault_email']);
+    if (typeof stored.shieldvault_email === 'string') response.email = stored.shieldvault_email;
+  } catch (_) {}
+  return response;
+}
+
+async function broadcastEntitlement(state) {
+  // A stale request must never overwrite a newer activation/removal broadcast.
+  if (state && state.reason === 'license_changed') return;
+  const message = {
+    type: 'SHIELDVAULT_ENTITLEMENT_CHANGED',
+    ...publicEntitlementState(state),
+  };
+  const deliveries = [];
+  const safely = (delivery) => Promise.resolve(delivery).catch(() => {});
+
+  // Notify extension pages (popup/options) that happen to be open.
+  try {
+    deliveries.push(safely(chrome.runtime.sendMessage(message)));
+  } catch (_) {}
+
+  // runtime.sendMessage does not reliably deliver worker-originated messages to
+  // content scripts, so notify every injected tab explicitly. Tabs without a
+  // ShieldVault receiver reject harmlessly.
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs || []) {
+      if (typeof tab.id !== 'number') continue;
+      try {
+        deliveries.push(safely(chrome.tabs.sendMessage(tab.id, message)));
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  await Promise.all(deliveries);
+}
+
+async function activateLicense(rawKey) {
+  const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+  if (!key) return { isPro: false, reason: 'no_license' };
+
+  shieldVaultEntitlementGeneration += 1;
+  const generation = shieldVaultEntitlementGeneration;
+  await chrome.storage.local.set({ shieldvault_license_key: key });
+  await clearVerifiedSessionCache();
+  await clearLocalEntitlementMetadata({ keepLicenseKey: true });
+
+  const state = await validateLicenseWithBackend(
+    key,
+    { isPro: false, reason: 'unverified' },
+    generation
+  );
+  await broadcastEntitlement(state);
+
+  const response = await popupEntitlementState(state);
+  if (!response.isPro && state && typeof state.error === 'string') {
+    response.error = state.error;
+  }
+  return response;
+}
+
+async function removeLicense() {
+  shieldVaultEntitlementGeneration += 1;
+  await clearLocalEntitlementMetadata({ keepLicenseKey: false });
+  await clearVerifiedSessionCache();
+  const state = { isPro: false, reason: 'no_license' };
+  await broadcastEntitlement(state);
+  return state;
+}
+
 function safeText(value, maxLength) {
   return String(value || '').slice(0, maxLength);
 }
@@ -264,6 +622,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   restoreBadge();
+  verifyStoredLicense({ force: true })
+    .then(broadcastEntitlement)
+    .catch(() => {});
 });
 
 /**
@@ -358,6 +719,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(() => {});
     }
     return false;
+  }
+
+  if (message.type === 'SHIELDVAULT_GET_ENTITLEMENT') {
+    verifyStoredLicense({ force: message.force === true })
+      .then(async (state) => {
+        // Cached reads do not represent a state transition. Every other result
+        // is broadcast so all already-open tabs converge on the same tier.
+        if (state.reason !== 'cached') await broadcastEntitlement(state);
+        sendResponse(publicEntitlementState(state));
+      })
+      .catch(() => sendResponse({ isPro: false, reason: 'verification_failed' }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_REFRESH_ENTITLEMENT') {
+    verifyStoredLicense({ force: true })
+      .then(async (state) => {
+        await broadcastEntitlement(state);
+        sendResponse(await popupEntitlementState(state));
+      })
+      .catch(() => sendResponse({ isPro: false, reason: 'verification_failed' }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_ACTIVATE_LICENSE') {
+    activateLicense(message.key)
+      .then((state) => sendResponse(state))
+      .catch(() => sendResponse({
+        isPro: false,
+        reason: 'activation_failed',
+        error: 'Activation failed. Please try again.',
+      }));
+    return true;
+  }
+
+  if (message.type === 'SHIELDVAULT_REMOVE_LICENSE') {
+    removeLicense()
+      .then((state) => sendResponse(publicEntitlementState(state)))
+      .catch(() => sendResponse({ isPro: false, reason: 'removal_failed' }));
+    return true;
   }
 
   if (message.type === 'SHIELDVAULT_OPEN_SETTINGS') {

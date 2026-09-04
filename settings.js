@@ -25,16 +25,14 @@
   const soundChoice = document.getElementById('catchSoundChoice');
   const previewSound = document.getElementById('previewCatchSound');
   let isPro = false;
+  let currentSettings = { ...DEFAULTS };
 
   function loadProStatus() {
     return new Promise(function (resolve) {
       try {
-        chrome.storage.local.get(['shieldvault_pro', 'shieldvault_tier', 'shieldvault_pro_expiry'], function (result) {
+        chrome.runtime.sendMessage({ type: 'SHIELDVAULT_GET_ENTITLEMENT' }, function (response) {
           if (chrome.runtime.lastError) return resolve(false);
-          const expiry = result.shieldvault_pro_expiry;
-          const expired = typeof expiry === 'number' && expiry > 0 && Date.now() > expiry;
-          const entitled = result.shieldvault_pro === true || result.shieldvault_tier === 'plus';
-          resolve(entitled && !expired);
+          resolve(Boolean(response && response.isPro === true));
         });
       } catch (_) {
         resolve(false);
@@ -64,6 +62,7 @@
   }
 
   async function save(state) {
+    currentSettings = state;
     await chrome.storage.local.set({ [SETTINGS_KEY]: state });
     showSaved();
   }
@@ -71,6 +70,7 @@
   async function load() {
     const data = await chrome.storage.local.get([SETTINGS_KEY]);
     const state = merged(data && data[SETTINGS_KEY]);
+    currentSettings = state;
 
     ids.forEach(function (id) {
       const el = document.getElementById(id);
@@ -82,6 +82,12 @@
 
     return state;
   }
+
+  chrome.runtime.onMessage.addListener(function (message) {
+    if (!message || message.type !== 'SHIELDVAULT_ENTITLEMENT_CHANGED') return;
+    isPro = message.isPro === true;
+    refreshProUI(currentSettings);
+  });
 
   function collectState() {
     const state = {};
