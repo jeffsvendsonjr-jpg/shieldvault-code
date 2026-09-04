@@ -291,7 +291,7 @@ const DETECTORS = [
   { name: "Slack Webhook", pattern: /hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/ },
   
   // Discord
-  { name: "Discord Bot Token", pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}/ },
+  { name: "Discord Bot Token", pattern: /\b[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}\b/ },
   { name: "Discord Webhook", pattern: /discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_-]+/ },
   
   // npm
@@ -301,7 +301,7 @@ const DETECTORS = [
   { name: "PyPI Token", pattern: /pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}/ },
   
   // Twilio
-  { name: "Twilio API Key", pattern: /SK[0-9a-fA-F]{32}/ },
+  { name: "Twilio API Key", pattern: /\bSK[0-9a-fA-F]{32}\b/ },
   // Note: Account SID (AC...) is a public account identifier, not a secret.
   
   // SendGrid
