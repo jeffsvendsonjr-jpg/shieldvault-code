@@ -14,7 +14,8 @@
   const STORAGE_KEY = "shieldvault_capsule_master_key_v1";
   const PREFIX = "svcap1d";
   const AAD = new TextEncoder().encode("shieldvault:capsule:v1:device");
-  const TOKEN_RE = /\bsvcap1d\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\b/g;
+  const TOKEN_RE = /svcap1d\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g;
+  let masterKeyPromise = null;
 
   function bytesToBase64Url(bytes) {
     let binary = "";
@@ -32,7 +33,7 @@
     return out;
   }
 
-  async function getOrCreateMasterKey() {
+  async function loadOrCreateMasterKey() {
     if (!root.crypto || !root.crypto.subtle) {
       throw new Error("Web Crypto is unavailable");
     }
@@ -70,6 +71,16 @@
       false,
       ["encrypt", "decrypt"]
     );
+  }
+
+  function getOrCreateMasterKey() {
+    if (!masterKeyPromise) {
+      masterKeyPromise = loadOrCreateMasterKey().catch((error) => {
+        masterKeyPromise = null;
+        throw error;
+      });
+    }
+    return masterKeyPromise;
   }
 
   async function sealSecret(plaintext) {
