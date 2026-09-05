@@ -70,6 +70,8 @@
       ],
       "js": [
         "content-script.js",
+        "capsule-core.js",
+        "capsule-ui.js",
         "catch-guidance.js",
         "catch-audio.js",
         "catch-sound.js",
