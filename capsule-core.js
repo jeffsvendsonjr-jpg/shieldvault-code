@@ -4,18 +4,17 @@
 //
 // Wire format: svcap1d.<iv-b64url>.<ciphertext+built-in-GCM-tag-b64url>
 // - v1 = first capsule format
-// - d  = device-bound (only this ShieldVault installation can decrypt)
+// - d  = device-bound (requires the originating browser-profile key)
 //
 // This is deliberately NOT a home-grown public-key protocol. v0 proves the UX
-// and local security boundary with AES-256-GCM. Recipient-bound capsules will
+// and explores a local security boundary with AES-256-GCM. Recipient-bound capsules will
 // use a reviewed JWE/HPKE-style envelope in a later version.
 (() => {
   const root = typeof globalThis !== "undefined" ? globalThis : window;
-  const STORAGE_KEY = "shieldvault_capsule_master_key_v1";
   const PREFIX = "svcap1d";
   const AAD = new TextEncoder().encode("shieldvault:capsule:v1:device");
   const TOKEN_RE = /svcap1d\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g;
-  let masterKeyPromise = null;
+
 
   function bytesToBase64Url(bytes) {
     let binary = "";
@@ -30,64 +29,24 @@
     const binary = atob(normalized + padding);
     const out = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+    if (bytesToBase64Url(out) !== value) throw new Error("Noncanonical capsule encoding");
     return out;
   }
 
-  async function loadOrCreateMasterKey() {
-    if (!root.crypto || !root.crypto.subtle) {
-      throw new Error("Web Crypto is unavailable");
-    }
-    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) {
-      throw new Error("Extension storage is unavailable");
-    }
-
-    let stored = null;
-    try {
-      const result = await chrome.storage.local.get([STORAGE_KEY]);
-      stored = result && result[STORAGE_KEY];
-    } catch (_) {
-      stored = null;
-    }
-
-    let raw;
-    if (typeof stored === "string") {
-      try {
-        raw = base64UrlToBytes(stored);
-      } catch (_) {
-        raw = null;
-      }
-    }
-
-    if (!(raw instanceof Uint8Array) || raw.length !== 32) {
-      raw = new Uint8Array(32);
-      root.crypto.getRandomValues(raw);
-      await chrome.storage.local.set({ [STORAGE_KEY]: bytesToBase64Url(raw) });
-    }
-
-    return root.crypto.subtle.importKey(
-      "raw",
-      raw,
-      { name: "AES-GCM" },
-      false,
-      ["encrypt", "decrypt"]
-    );
-  }
-
-  function getOrCreateMasterKey() {
-    if (!masterKeyPromise) {
-      masterKeyPromise = loadOrCreateMasterKey().catch((error) => {
-        masterKeyPromise = null;
-        throw error;
-      });
-    }
-    return masterKeyPromise;
+  async function getOrCreateMasterKey(create = false) {
+    if (!root.crypto || !root.crypto.subtle) throw new Error("Web Crypto is unavailable");
+    const response = await chrome.runtime.sendMessage({ type: "SHIELDVAULT_CAPSULE_KEY", create });
+    if (!response || response.ok !== true) throw new Error("Capsule key unavailable");
+    const raw = base64UrlToBytes(response.key);
+    if (raw.length !== 32) throw new Error("Invalid capsule key");
+    return root.crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
   }
 
   async function sealSecret(plaintext) {
     const value = String(plaintext || "");
     if (!value) throw new Error("Cannot seal an empty secret");
 
-    const key = await getOrCreateMasterKey();
+    const key = await getOrCreateMasterKey(true);
     const iv = new Uint8Array(12);
     root.crypto.getRandomValues(iv);
     const ciphertext = await root.crypto.subtle.encrypt(
@@ -143,15 +102,25 @@
 
     if (!values.length) return { text: input, protectedCount: 0 };
 
-    let output = input;
-    let protectedCount = 0;
+    // Resolve replacements against the original input, never generated ciphertext.
+    const spans = [];
     for (const value of values) {
-      if (!output.includes(value)) continue;
-      const capsule = await sealSecret(value);
-      const pieces = output.split(value);
-      protectedCount += Math.max(0, pieces.length - 1);
-      output = pieces.join(capsule);
+      let index = input.indexOf(value);
+      while (index !== -1) {
+        const end = index + value.length;
+        if (!spans.some((span) => index < span.end && end > span.index)) spans.push({ index, end, value });
+        index = input.indexOf(value, end);
+      }
     }
+    spans.sort((a, b) => a.index - b.index);
+    let output = "";
+    let cursor = 0;
+    for (const span of spans) {
+      output += input.slice(cursor, span.index) + await sealSecret(span.value);
+      cursor = span.end;
+    }
+    output += input.slice(cursor);
+    const protectedCount = spans.length;
 
     return { text: output, protectedCount };
   }

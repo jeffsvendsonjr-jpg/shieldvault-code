@@ -1,6 +1,34 @@
 // Service worker for ShieldVault extension
 // Removed userp.ly date verification feature (not core to ShieldVault)
 
+// Capsule key creation has one authority across all tabs and frames.
+// Only key material crosses this message boundary; never draft/secret content.
+let capsuleKeyRequest = null;
+function requestCapsuleKey(create) {
+  if (capsuleKeyRequest) return capsuleKeyRequest.then(() => requestCapsuleKey(create));
+  const operation = (async () => {
+    const name = 'shieldvault_capsule_master_key_v1';
+    const result = await chrome.storage.local.get([name]);
+    const stored = result[name];
+    if (stored !== undefined) {
+      if (typeof stored !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(stored)) {
+        throw new Error('Invalid capsule key');
+      }
+      const bytes = atob(stored.replace(/-/g, '+').replace(/_/g, '/') + '=');
+      const canonical = btoa(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      if (bytes.length !== 32 || canonical !== stored) throw new Error('Invalid capsule key');
+      return stored;
+    }
+    if (!create) throw new Error('Capsule key unavailable');
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const encoded = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    await chrome.storage.local.set({ [name]: encoded });
+    return encoded;
+  })();
+  capsuleKeyRequest = operation;
+  return operation.finally(() => { if (capsuleKeyRequest === operation) capsuleKeyRequest = null; });
+}
+
 const SHIELDVAULT_DEFAULT_SETTINGS = {
   secretGuard: true,
   tokenGuard: true,
@@ -694,6 +722,17 @@ chrome.runtime.onStartup.addListener(() => {
  * @returns {boolean} true when responding asynchronously.
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message && message.type === 'SHIELDVAULT_CAPSULE_KEY') {
+    if (!sender || sender.id !== chrome.runtime.id) {
+      sendResponse({ ok: false });
+      return false;
+    }
+    requestCapsuleKey(message.create === true)
+      .then((key) => sendResponse({ ok: true, key }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (!message || typeof message.type !== 'string') return false;
 
   if (message.type === 'SHIELDVAULT_PREVENTED') {
