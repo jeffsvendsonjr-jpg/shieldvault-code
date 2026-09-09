@@ -94,25 +94,8 @@
       throw new Error("ShieldVault detector is unavailable");
     }
 
-    const values = [...new Set(
-      detectSecretMatches(input)
-        .filter((match) => match && match.soft !== true && typeof match.value === "string" && match.value)
-        .map((match) => match.value)
-    )].sort((a, b) => b.length - a.length);
-
-    if (!values.length) return { text: input, protectedCount: 0 };
-
-    // Resolve replacements against the original input, never generated ciphertext.
-    const spans = [];
-    for (const value of values) {
-      let index = input.indexOf(value);
-      while (index !== -1) {
-        const end = index + value.length;
-        if (!spans.some((span) => index < span.end && end > span.index)) spans.push({ index, end, value });
-        index = input.indexOf(value, end);
-      }
-    }
-    spans.sort((a, b) => a.index - b.index);
+    const spans = root.ShieldVaultCapsuleMatches.plan(input);
+    if (!spans.length) return { text: input, protectedCount: 0 };
     let output = "";
     let cursor = 0;
     for (const span of spans) {
@@ -133,5 +116,6 @@
     openCapsule,
     findCapsules,
     protectDetectedText,
+    canProtect: (text) => root.ShieldVaultCapsuleMatches.plan(text).length > 0,
   });
 })();

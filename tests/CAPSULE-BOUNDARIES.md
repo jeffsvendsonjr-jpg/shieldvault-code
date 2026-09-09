@@ -25,9 +25,20 @@ Still required before release:
 - Verify no new catch on submitting capsule output and unchanged dismiss/allow-once.
 
 Known scope limits:
-- Replacement follows detector match values. Context-dependent detectors may
-  include labels; this does not establish credential-payload-only replacement.
+- Capsule eligibility now uses a separate conservative span planner. Supported
+  assignments: password/passwd/pwd, generic secret/API/token labels, AWS secret
+  access keys, Azure OpenAI keys and AccountKey. Supported standalone tokens:
+  OpenAI, GitHub and AWS access-key IDs. Labels, quotes and whitespace are retained.
+- Other detector formats remain warnings with no Protect action until an exact
+  parser is added. Any unresolved hard warning suppresses the whole action;
+  large-paste aggregate metadata is the sole exception.
+- Real-detector tests cover exact payload spans, JSON/quoted/unquoted assignments,
+  repeated values, incomplete quotes, extended tokens, mixed clue/key inputs and
+  a full crypto round trip. Crypto isolation tests intentionally use a stub span
+  planner; capsule-matches.test.js exercises the production planner.
 - Markers such as private-key headers or recovery-phrase mentions do not establish
   complete secret detection. Do not claim all sensitive content was protected.
 - The existing UI snapshot can become stale while the overlay remains open.
 - Typed plaintext already present in the page is outside a never-exposed guarantee.
+
+Live extension validation could not be performed in the cloud browser: its URL policy blocks chrome://extensions/. No live ChatGPT editor pass is claimed.

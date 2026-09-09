@@ -610,6 +610,18 @@ function collectMatches(text, pattern, name, out) {
 function detectSecretMatches(text) {
   if (!text || typeof text !== "string") return [];
 
+  // Canonical capsule wire values are opaque ciphertext, not a new password.
+  // This is syntax recognition, not authentication or permission to decrypt.
+  text = text.replace(/(?<![A-Za-z0-9_])svcap1d\.([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{23,})(?=$|[\s"'`,;:)\]}])/g,
+    (token, iv, ciphertext) => {
+      try {
+        const decode = value => atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4));
+        const raw = decode(ciphertext);
+        const canonical = btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        return decode(iv).length === 12 && raw.length >= 17 && canonical === ciphertext ? "" : token;
+      } catch (_) { return token; }
+    });
+
   // --- HARD signals: secrets and clearly sensitive personal data ---
   const hard = [];
   for (const detector of DETECTORS) {
@@ -618,7 +630,7 @@ function detectSecretMatches(text) {
   }
 
   if (SHIELDVAULT_SETTINGS.passwordGuard) {
-    collectMatches(text, /(?:password|passwd|pwd)\s*[:=]\s*[^\s'"]{6,}/i, "Password-like string", hard);
+    collectMatches(text, /(?:password|passwd|pwd)["']?\s*[:=]\s*(?:"[^"\r\n]{6,}"|'[^'\r\n]{6,}'|[^\s'";,}\]]{6,})/i, "Password-like string", hard);
   }
 
   if (SHIELDVAULT_SETTINGS.recoveryPhraseGuard) {

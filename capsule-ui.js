@@ -15,9 +15,7 @@
   const originalShowBlockedOverlay = showBlockedOverlay;
 
   function hasProtectableSecret(text) {
-    return detectSecretMatches(String(text || "")).some(
-      (match) => match && match.soft !== true && typeof match.value === "string" && match.value
-    );
+    return globalThis.ShieldVaultCapsules.canProtect(String(text || ""));
   }
 
   function captureInsertionPoint(el) {

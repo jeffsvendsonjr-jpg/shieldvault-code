@@ -70,6 +70,7 @@
       ],
       "js": [
         "content-script.js",
+        "capsule-matches.js",
         "capsule-core.js",
         "capsule-ui.js",
         "catch-guidance.js",

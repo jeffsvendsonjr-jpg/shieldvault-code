@@ -29,6 +29,19 @@ function installation(state = {}) {
           try { return { ok: true, key: await authority(message.create) }; } catch { return { ok: false }; }
         },
       } } });
+      ctx.ShieldVaultCapsuleMatches = { plan(text) {
+        const values = detector(text).filter(m => m.value && !m.soft).map(m => m.value).sort((a,b) => b.length-a.length);
+        const spans = [];
+        for (const value of values) {
+          let index = text.indexOf(value);
+          while (index >= 0) {
+            const end = index + value.length;
+            if (!spans.some(s => index < s.end && end > s.index)) spans.push({ index, end, value });
+            index = text.indexOf(value, end);
+          }
+        }
+        return spans.sort((a,b) => a.index-b.index);
+      } };
       vm.runInContext(source('capsule-core.js'), ctx);
       return ctx.ShieldVaultCapsules;
     },
@@ -92,7 +105,7 @@ function uiHarness(matches, field) {
     querySelectorAll: () => [{ textContent: 'Allow once', parentElement: { insertBefore() { added = true; } } }],
   };
   const ctx = vm.createContext({
-    ShieldVaultCapsules: { async protectDetectedText() { return { text: 'before CAPSULE after', protectedCount: 1 }; } },
+    ShieldVaultCapsules: { canProtect: () => matches.some(m => m.value && !m.soft), async protectDetectedText() { return { text: 'before CAPSULE after', protectedCount: 1 }; } },
     detectSecretMatches: () => matches,
     showBlockedOverlay() {}, getValue: el => el.value, setValue: (el, value) => { el.value = value; },
     document: { getElementById: () => overlay, createElement: () => ({ style: {}, addEventListener: (_, fn) => { click = fn; } }) },
