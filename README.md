@@ -7,16 +7,16 @@ ShieldVault is a browser extension with two layers of protection:
 - **Hard Blocks (Secret Detection):** Detects API keys, tokens, credentials, seed phrases, and payment card numbers in what you're about to send, and redacts them in the composer before the message goes anywhere.
 - **Soft Blocks (Regret Prevention):** Optionally flags impulsive behavior — angry rants, passive-aggressive phrasing, all-caps shouting, late-night sends — and gives you a moment to reconsider.
 
-It runs on major AI chat platforms (ChatGPT, Claude, Gemini, Perplexity, Copilot, and others), developer surfaces (GitHub, GitLab, Replit, StackBlitz), workplace tools (Slack, Discord, Linear, Jira, Notion, Google Docs), social media (LinkedIn, Reddit, X), and email (Gmail, Outlook). The exact site list is in <a>`manifest.json`</a> — if it's not in `content_scripts.matches`, ShieldVault doesn't run there.
+It runs on major AI chat platforms (ChatGPT, Claude, Gemini, Perplexity, Copilot, and others), developer surfaces (GitHub, GitLab, Replit, StackBlitz), workplace tools (Slack, Discord, Linear, Jira, Notion), social media (LinkedIn, Reddit, X), and email (Gmail, Outlook). The exact site list is in <a>`manifest.json`</a> — if it's not in `content_scripts.matches`, ShieldVault doesn't run there.
 
 ## Privacy — the precise version
 
-The honest claim isn't "we never talk to a server." It's this: **the content you type never leaves your device, and you can verify that in this repository.**
+ShieldVault checks supported text locally. It does not send protected text to ShieldVault for detection. License validation uses ShieldVault's server.
 
-**What never leaves your device:**
+**What ShieldVault does not transmit for detection:**
 
-- Your messages, prompts, and anything you type. All detection — secret scanning and behavioral analysis — runs locally in <a>`content-script.js`</a> using pattern matching. No text is sent to any server or external AI for analysis.
-- The secrets themselves. When ShieldVault redacts something, the secret is never stored — not locally, not remotely. Only a record of the *event* is kept ("AWS key blocked on chatgpt.com"), never its content.
+- Detection runs locally in <a>`content-script.js`</a> using pattern matching. ShieldVault does not send composer text to its server or an external AI for analysis. Text you choose to submit still goes to the destination site.
+- Detected secret values are not stored by ShieldVault. When it redacts a value, only metadata about the event (such as category and site) is kept locally, never the matched value.
 
 **What is stored locally on your device:**
 
@@ -24,23 +24,23 @@ The honest claim isn't "we never talk to a server." It's this: **the content you
 - A capped log of block events — the detector type and the site, never the content. This lives in Chrome's local extension storage so your protection history survives a browser restart. You can clear it anytime from the extension.
 - If you purchase Pro: your license key and display metadata (plan, expiry).
 
-**The one network call this extension makes, and exactly what it contains:**
+**License validation network request:**
 
-If (and only if) you activate a Pro license, the extension sends your **license key** — nothing else — to `https://shieldvault.site` to confirm the license is valid. That's the only endpoint this extension can talk to (see `host_permissions` in the manifest), and the only data in the request is the key itself. Free-tier users with no license key stored trigger no network requests at all.
+When you activate or use a Pro license, the extension sends the stored license key to `https://shieldvault.site` for validation. The manifest grants network host access to that domain. Protected composer text is not included in the license request. A free installation with no license key does not need license validation.
 
-**What we don't do:** no analytics, no tracking, no accounts, no telemetry, no reading your browsing, no transmitting message content anywhere, ever.
+**What the extension does not do:** no extension analytics or telemetry, no account requirement, and no transmission of composer text to ShieldVault for detection. It inspects text in supported fields locally so it can warn or redact before submission.
 
 Don't take this README's word for any of it — take the code's. The functions that touch the network are easy to find: search the repo for `fetch(`.
 
 ## Verify that this code is what's actually running
 
-ShieldVault ships unminified with no build step, so the code in this repository is the code in the extension — and you can prove it:
+The repository's `main` branch may be ahead of the Chrome Web Store version. To check a particular installed release against source:
 
 1. Install ShieldVault from the <a href="https://chromewebstore.google.com/detail/shieldvault-ai-chat-secre/johfmefhjjmejjlopnndkbhmgdidkfao">Chrome Web Store</a>.
 2. Find the installed extension folder (visit `chrome://version`, note your Profile Path, then look in `Extensions/johfmefhjjmejjlopnndkbhmgdidkfao/<version>/`).
-3. Diff those files against the release tag in this repo matching your installed version. (The repo additionally contains `README.md` and `license`, which are not packaged in the extension — everything else must match.)
+3. Compare the installed files with source for that exact published version, when a matching source snapshot is available. Do not compare the installed Store version with the current `main` branch and assume they are the same.
 
-If they don't match, open an issue — that would be a serious problem and we want to know immediately.
+If you cannot find a matching source snapshot, or the files differ unexpectedly, open an issue so the release can be reconciled.
 
 ## Found a false positive or a site where it breaks?
 
