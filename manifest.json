@@ -70,6 +70,7 @@
       ],
       "js": [
         "content-script.js",
+        "submission-guard.js",
         "catch-guidance.js",
         "catch-audio.js",
         "catch-sound.js",
